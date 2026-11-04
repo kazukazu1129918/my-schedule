@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自分の予定表</title>
+
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png"> 
+    <meta name="theme-color" content="#245dcc">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="予定表">
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            font-family: sans-serif;
+            color: #243247;
+            background: #f3f6fb;
+        }
+
+        main {
+            max-width: 1100px;
+            margin: auto;
+        }
+
+        h1 {
+            font-size: 26px;
+        }
+
+        h2 {
+            font-size: 20px;
+        }
+
+        button,
+        input,
+        select {
+            font: inherit;
+        }
+
+        button {
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px;
+            background: #245dcc;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:focus-visible {
+            outline: 3px solid #e29600;
+            outline-offset: 2px;
+        }
+
+        .secondary {
+            background: #e7ecf4;
+            color: #243247;
+        }
+
+        .danger {
+            background: #b52d3b;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .panel {
+            margin-top: 16px;
+            padding: 16px;
+            border-radius: 16px;
+            background: white;
+        }
+
+        .scroll {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            min-width: 760px;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        th,
+        td {
+            border: 1px solid #dce3ee;
+            padding: 4px;
+            text-align: center;
+            vertical-align: top;
+        }
+
+        th {
+            padding: 10px 4px;
+            background: #edf3ff;
+            font-size: 14px;
+        }
+
+        th small {
+            display: block;
+            margin-top: 4px;
+            font-weight: normal;
+        }
+
+        .today {
+            background: #d3e3ff;
+        }
+
+        .event-button {
+            display: block;
+            width: 100%;
+            margin-bottom: 4px;
+            padding: 10px 6px;
+            background: #e3edff;
+            color: #173f85;
+            white-space: pre-line;
+            overflow-wrap: anywhere;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        .add-slot {
+            width: 100%;
+            min-height: 44px;
+            padding: 8px;
+            background: #f5f7fc;
+            color: #245dcc;
+        }
+
+        dialog {
+            width: min(460px, calc(100% - 24px));
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 24px;
+            border: none;
+            border-radius: 16px;
+            color: #243247;
+        }
+
+        dialog::backdrop {
+            background: #0007;
+        }
+
+        input,
+        select {
+            width: 100%;
+            min-width: 0;
+            padding: 12px;
+            margin-top: 6px;
+            border: 1px solid #bcc8da;
+            border-radius: 8px;
+            background: white;
+            color: #243247;
+        }
+
+        .note {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #526078;
+        }
+
+        #week-list {
+            padding: 0;
+            list-style: none;
+        }
+
+        #week-list li {
+            margin-bottom: 8px;
+        }
+
+        #week-list .event-button {
+            padding: 14px;
+            font-size: 15px;
+        }
+
+        #month-table td {
+            height: 130px;
+        }
+
+        .day-label {
+            padding: 6px;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        .outside-month {
+            background: #f0f2f6;
+        }
+
+        .outside-month .day-label {
+            color: #69758a;
+        }
+
+        .event-button[data-color="blue"] {
+            background: #e3edff;
+            color: #173f85;
+            border-left: 5px solid #245dcc;
+        }
+
+        .event-button[data-color="green"] {
+            background: #e0f3e7;
+            color: #185332;
+            border-left: 5px solid #27854c;
+        }
+
+        .event-button[data-color="orange"] {
+            background: #fff0d9;
+            color: #774400;
+            border-left: 5px solid #c97800;
+        }
+
+        .event-button[data-color="pink"] {
+            background: #fce4ef;
+            color: #84264d;
+            border-left: 5px solid #c43f78;
+        }
+
+        .event-button[data-color="purple"] {
+            background: #eee5fc;
+            color: #593287;
+            border-left: 5px solid #8752be;
+        }
+
+        .event-button[data-color="gray"] {
+            background: #e9edf2;
+            color: #394657;
+            border-left: 5px solid #69788b;
+        }
+
+        textarea {
+            display: block;
+            width: 100%;
+            margin-top: 6px;
+            padding: 12px;
+            border: 1px solid #bcc8da;
+            border-radius: 8px;
+            font: inherit;
+            color: #243247;
+            background: white;
+            resize: vertical;
+        }
+
+        #day-list {
+            padding: 0;
+            list-style: none;
+        }
+
+        #day-list li {
+            margin-top: 12px;
+        }
+
+        #day-list .event-button {
+            padding: 16px;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .day-memo {
+            margin: 6px 0 0;
+            padding: 8px 12px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 14px;
+            color: #526078;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>自分の予定表</h1>
+        <div class="actions" style="margin-bottom: 12px;">
+
+            <button id="show-day" class="secondary" type="button" aria-pressed="false">
+                日別
+            </button>
+            <button id="show-week" type="button" aria-pressed="true">
+                週間
+            </button>
+            <button id="show-month" class="secondary" type="button" aria-pressed="false">
+                月間
+            </button>
+        </div>
+
+        <div class="actions">
+            <button id="add-button" type="button">＋ 予定を追加</button>
+            <button id="prev-week" class="secondary" type="button">前の週</button>
+            <button id="this-week" class="secondary" type="button">今週</button>
+            <button id="next-week" class="secondary" type="button">次の週</button>
+        </div>
+
+        <section id="week-panel" class="panel">
+            <h2 id="week-title"></h2>
+            <p class="note">
+                「＋」で追加、予定名を押すと編集・削除できます。
+            </p>
+
+            <div class="scroll">
+                <table id="week-table"></table>
+            </div>
+
+            <p class="note">
+                スマホでは表を左右にスクロールできます。
+                コマの時間外の予定は、下の一覧に表示します。
+            </p>
+        </section>
+
+        <section id="week-list-panel" class="panel">
+            <h2>表示中の週の予定一覧</h2>
+            <ul id="week-list"></ul>
+        </section>
+        <section id="month-panel" class="panel" hidden>
+            <div class="actions">
+                <button id="prev-month" class="secondary" type="button">
+                    前の月
+                </button>
+                <button id="this-month" class="secondary" type="button">
+                    今月
+                </button>
+                <button id="next-month" class="secondary" type="button">
+                    次の月
+                </button>
+            </div>
+
+            <h2 id="month-title"></h2>
+            <div class="actions">
+                <label for="jump-month">
+                    移動する月
+                    <input id="jump-month" type="month">
+                </label>
+                <button id="jump-month-button" type="button">
+                    この月へ移動
+                </button>
+            </div>
+
+            <p class="note">
+                日付の「＋」で追加、予定名を押すと編集・削除できます。
+            </p>
+
+            <div class="scroll">
+                <table id="month-table"></table>
+            </div>
+
+            <p class="note">
+                スマホでは表を左右にスクロールできます。
+            </p>
+        </section>
+
+        <section id="day-panel" class="panel" hidden>
+            <div class="actions">
+                <button id="prev-day" class="secondary" type="button">
+                    前の日
+                </button>
+                <button id="today-button" class="secondary" type="button">
+                    今日
+                </button>
+                <button id="next-day" class="secondary" type="button">
+                    次の日
+                </button>
+            </div>
+
+            <p>
+                <label for="day-date">表示する日付</label>
+                <input id="day-date" type="date">
+            </p>
+
+            <h2 id="day-title"></h2>
+
+            <button id="add-day-event" type="button">
+                ＋ この日に予定を追加
+            </button>
+
+            <ul id="day-list"></ul>
+        </section>
+
+        <section class="panel">
+            <h2>朝のまとめ通知</h2>
+
+            <p>
+                <label for="morning-enabled">毎日の予定を知らせる</label>
+                <select id="morning-enabled">
+                    <option value="off">通知しない</option>
+                    <option value="on">通知する</option>
+                </select>
+            </p>
+
+            <p>
+                <label for="morning-time">通知時刻（日本時間）</label>
+                <input id="morning-time" type="time" value="07:30">
+            </p>
+
+            <p class="note">
+                個別通知を設定していない予定も、朝のまとめには含めます。
+                予定がない日は「今日は予定なし」と知らせる設定です。
+            </p>
+
+            <button id="save-morning" type="button">設定を保存</button>
+            <p id="morning-status" class="note" role="status"></p>
+
+            <p class="note">
+                現在は設定の保存のみです。通知の配信はまだ始まりません。
+            </p>
+        </section>
+    </main>
+
+    <dialog id="event-dialog">
+        <form id="event-form">
+            <h2 id="form-title">予定を追加</h2>
+
+            <div id="scope-fields" hidden>
+                <p>
+                    <label for="edit-scope">変更・削除する範囲</label>
+                    <select id="edit-scope">
+                        <option value="one">この日だけ</option>
+                        <option value="future">この日以降すべて</option>
+                    </select>
+                </p>
+                <p id="scope-note" class="note"></p>
+            </div>
+
+            <p>
+                <label for="event-title">予定名</label>
+                <input id="event-title" type="text" placeholder="例：数学、ゼミ、バイト" required>
+            </p>
+
+            <p>
+                <label for="event-category">分類</label>
+                <select id="event-category">
+                    <option value="other">その他</option>
+                    <option value="class">授業</option>
+                    <option value="work">バイト</option>
+                    <option value="club">部活</option>
+                    <option value="private">私用</option>
+                </select>
+            </p>
+
+            <p>
+                <label for="event-color">予定の色</label>
+                <select id="event-color">
+                    <option value="blue">青</option>
+                    <option value="green">緑</option>
+                    <option value="orange">オレンジ</option>
+                    <option value="pink">ピンク</option>
+                    <option value="purple">紫</option>
+                    <option value="gray">グレー</option>
+                </select>
+            </p>
+
+            <p>
+                <label for="event-date">日付</label>
+                <input id="event-date" type="date" required>
+            </p>
+
+            <p id="date-note" class="note"></p>
+
+            <p>
+                <label for="time-mode">時間の指定方法</label>
+                <select id="time-mode">
+                    <option value="period">大学のコマで指定</option>
+                    <option value="time">時刻で指定</option>
+                    <option value="allday">終日（時間指定なし）</option>
+                </select>
+            </p>
+
+            <p id="period-fields">
+                <label for="event-period">コマ</label>
+                <select id="event-period"></select>
+            </p>
+
+            <div id="time-fields" hidden>
+                <p>
+                    <label for="start-time">開始時刻</label>
+                    <input id="start-time" type="time">
+                </p>
+                <p>
+                    <label for="end-time">終了時刻</label>
+                    <input id="end-time" type="time">
+                </p>
+            </div>
+
+            <p id="repeat-choice">
+                <label for="repeat-mode">繰り返し</label>
+                <select id="repeat-mode">
+                    <option value="once">今回だけ</option>
+                    <option value="daily">毎日</option>
+                    <option value="weekly">毎週</option>
+                    <option value="monthly">毎月</option>
+                    <option value="yearly">毎年</option>
+                </select>
+            </p>
+
+            <div id="repeat-fields" hidden>
+                <p>
+                    <label for="repeat-interval">繰り返しの間隔</label>
+                    <input id="repeat-interval" type="number" min="1" max="999" step="1" value="1" required>
+                    <small id="interval-help"></small>
+                </p>
+                <p>
+                    <label for="repeat-until">繰り返しの終了日</label>
+                    <input id="repeat-until" type="date">
+                    <small>空欄なら終了日なし。</small>
+                </p>
+            </div>
+
+            <p>
+                <label for="reminder-mode">この予定の通知</label>
+                <select id="reminder-mode">
+                    <option value="none">通知なし</option>
+                    <option value="custom">通知する</option>
+                </select>
+            </p>
+
+            <div id="reminder-fields" hidden>
+                <p>
+                    <label for="reminder-value">何時間・何分前に知らせるか</label>
+                    <input id="reminder-value" type="number" min="0" max="10080" step="1" value="30">
+
+                    <label for="reminder-unit">単位</label>
+                    <select id="reminder-unit">
+                        <option value="1">分前</option>
+                        <option value="60">時間前</option>
+                        <option value="1440">日前</option>
+                    </select>
+                    <small>0にすると、予定の開始時刻に通知します。</small>
+                </p>
+
+                <p id="allday-reminder-fields" hidden>
+                    <label for="allday-reminder-time">
+                        終日の予定の基準時刻
+                    </label>
+                    <input id="allday-reminder-time" type="time" value="09:00">
+                    <small>
+                        例えば9:00を基準に「1時間前」なら、当日8:00に通知します。
+                    </small>
+                </p>
+            </div>
+
+            <p class="note">
+                通知機能は準備中です。今は設定の保存のみで、通知は届きません。
+            </p>
+
+            <p>
+                <label for="event-memo">メモ</label>
+                <textarea id="event-memo" rows="4" placeholder="教室、持ち物、集合場所など"></textarea>
+            </p>
+
+            <div class="actions">
+                <button id="save-button" type="submit">追加する</button>
+                <button id="delete-button" class="danger" type="button" hidden>削除</button>
+                <button id="cancel-button" class="secondary" type="button">キャンセル</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="scope-dialog">
+        <h2 id="scope-dialog-title">変更する範囲</h2>
+        <p id="scope-dialog-message"></p>
+
+        <p>
+            <label for="action-scope">対象の予定</label>
+            <select id="action-scope">
+                <option value="one">この日だけ</option>
+                <option value="future">この日以降すべて</option>
+            </select>
+        </p>
+
+        <p class="note">
+            「この日以降すべて」は、選んだ回から先が対象です。
+            その範囲で個別に変更した予定も含みます。
+            日付を移動した予定では、移動前の日付を基準にします。
+        </p>
+
+        <div class="actions">
+            <button id="apply-scope" type="button">確定する</button>
+            <button id="cancel-scope" class="secondary" type="button">
+                戻る
+            </button>
+        </div>
+    </dialog>
+    <script>
+        const periods = [
+            { name: "1限", start: "09:00", end: "10:30" },
+            { name: "2限", start: "10:40", end: "12:10" },
+            { name: "昼", start: "12:15", end: "12:55" },
+            { name: "3限", start: "13:00", end: "14:30" },
+            { name: "4限", start: "14:40", end: "16:10" },
+            { name: "5限", start: "16:20", end: "17:50" },
+            { name: "6限", start: "18:00", end: "19:30" },
+            { name: "7限", start: "19:40", end: "21:00" }
+        ];
+
+        const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+        const storageKey = "kazu-schedule-v1";
+
+        const categorySettings = {
+            class: { name: "授業", color: "blue" },
+            work: { name: "バイト", color: "orange" },
+            club: { name: "部活", color: "green" },
+            private: { name: "私用", color: "pink" },
+            other: { name: "その他", color: "gray" }
+        };
+        const $ = id => document.getElementById(id);
+
+        const form = $("event-form");
+        const dialog = $("event-dialog");
+        const titleInput = $("event-title");
+        const dateInput = $("event-date");
+        const timeMode = $("time-mode");
+        const periodSelect = $("event-period");
+        const startInput = $("start-time");
+        const endInput = $("end-time");
+        const repeatMode = $("repeat-mode");
+        const repeatUntil = $("repeat-until");
+        const scopeInput = $("edit-scope");
+
+        let events = [];
+        let editing = null;
+        let storageReadable = true;
+
+        function makeId() {
+            return globalThis.crypto?.randomUUID?.() ||
+                Date.now().toString(36) + Math.random().toString(36).slice(2);
+        }
+
+        function dateText(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, "0");
+            const d = String(date.getDate()).padStart(2, "0");
+            return `${y}-${m}-${d}`;
+        }
+
+        function parseDate(text) {
+            const [y, m, d] = text.split("-").map(Number);
+            return new Date(y, m - 1, d);
+        }
+
+        function addDays(text, amount) {
+            const date = parseDate(text);
+            date.setDate(date.getDate() + amount);
+            return dateText(date);
+        }
+
+        function mondayOf(text) {
+            const date = parseDate(text);
+            return addDays(text, -((date.getDay() + 6) % 7));
+        }
+
+        function shortDate(text) {
+            const date = parseDate(text);
+            return `${date.getMonth() + 1}/${date.getDate()}` +
+                `（${weekdays[date.getDay()]}）`;
+        }
+
+        let shownMonday = mondayOf(dateText(new Date()));
+
+        // これまで保存した予定も読み込む
+        try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
+
+            if (!Array.isArray(saved) || saved.some(event =>
+                !event || typeof event.title !== "string" ||
+                typeof event.date !== "string" ||
+                typeof event.start !== "string" ||
+                typeof event.end !== "string"
+            )) {
+                throw new Error("保存形式を確認できません");
+            }
+
+            events = saved.map(event => ({
+                ...event,
+                id: event.id || makeId(),
+                repeat: event.repeat || "once",
+                until: event.until || "",
+                exceptions: Array.isArray(event.exceptions)
+                    ? event.exceptions : []
+            }));
+        } catch {
+            storageReadable = false;
+            alert("保存済みの予定を読み込めませんでした。" +
+                "元のデータを守るため保存を停止しています。");
+        }
+
+        periods.forEach((period, index) => {
+            const option = document.createElement("option");
+            option.value = index;
+            option.textContent =
+                `${period.name}（${period.start}〜${period.end}）`;
+            periodSelect.appendChild(option);
+        });
+
+        function occursOn(event, date) {
+            if (!event.repeat || event.repeat === "once") {
+                return event.date === date;
+            }
+
+            if (date < event.date) return false;
+            if (event.until && date > event.until) return false;
+            if ((event.exceptions || []).includes(date)) return false;
+
+            const start = parseDate(event.date);
+            const target = parseDate(date);
+            const interval = Math.max(1, Number(event.interval) || 1);
+
+            // 日数差は、時差の影響を受けない方法で計算する
+            const startDay = Date.UTC(
+                start.getFullYear(), start.getMonth(), start.getDate()
+            );
+            const targetDay = Date.UTC(
+                target.getFullYear(), target.getMonth(), target.getDate()
+            );
+            const days = Math.round((targetDay - startDay) / 86400000);
+
+            switch (event.repeat) {
+                case "daily":
+                    return days % interval === 0;
+
+                case "weekly":
+                    return days % (7 * interval) === 0;
+
+                case "monthly": {
+                    const months =
+                        (target.getFullYear() - start.getFullYear()) * 12 +
+                        target.getMonth() - start.getMonth();
+
+                    return months % interval === 0 &&
+                        target.getDate() === start.getDate();
+                }
+
+                case "yearly": {
+                    const years = target.getFullYear() - start.getFullYear();
+
+                    return years % interval === 0 &&
+                        target.getMonth() === start.getMonth() &&
+                        target.getDate() === start.getDate();
+                }
+
+                default:
+                    return false;
+            }
+        }
+
+        function eventsOn(date) {
+            return events.filter(event => occursOn(event, date))
+                .sort((a, b) => a.start.localeCompare(b.start));
+        }
+
+        // 個別変更した予定からも、元の繰り返しを探す
+        function findRepeatSource(event) {
+            if (!event) return null;
+
+            if (event.repeat && event.repeat !== "once") {
+                return event;
+            }
+
+            if (event.parentId) {
+                return events.find(item =>
+                    item.id === event.parentId &&
+                    item.repeat &&
+                    item.repeat !== "once"
+                ) || null;
+            }
+
+            return null;
+        }
+
+        function editingWeekly() {
+            return Boolean(editing && findRepeatSource(editing.event));
+        }
+
+        function useWeekly() {
+            return repeatMode.value !== "once";
+        }
+
+        function updateFields() {
+            const usePeriod = timeMode.value === "period";
+            const useTime = timeMode.value === "time";
+
+            $("period-fields").hidden = !usePeriod;
+            $("time-fields").hidden = !useTime;
+
+            startInput.disabled = !useTime;
+            endInput.disabled = !useTime;
+            startInput.required = useTime;
+            endInput.required = useTime;
+
+            const recurring = useWeekly();
+
+            $("repeat-fields").hidden = !recurring;
+            $("repeat-interval").disabled = !recurring;
+            repeatUntil.disabled = !recurring;
+
+            // 編集時の終了日は、変更範囲が決まってから確認する
+            if (editing) {
+                repeatUntil.removeAttribute("min");
+            } else {
+                repeatUntil.min = dateInput.value;
+            }
+
+            // 範囲は保存・削除ボタンを押した後で選ぶ
+            $("scope-fields").hidden = true;
+            $("repeat-choice").hidden = Boolean(
+                editing && !editingWeekly()
+            );
+
+            repeatMode.querySelector('option[value="once"]').disabled =
+                editingWeekly();
+
+            const units = {
+                daily: "日",
+                weekly: "週間",
+                monthly: "か月",
+                yearly: "年"
+            };
+
+            const unit = units[repeatMode.value] || "";
+
+            $("interval-help").textContent = recurring
+                ? `例：1なら1${unit}ごと、2なら2${unit}ごと。`
+                : "";
+
+            $("date-note").textContent = editingWeekly()
+                ? "保存するときに「この日だけ」か「この日以降すべて」を選びます。" +
+                "繰り返し設定の変更は「この日以降すべて」の場合に反映します。"
+                : recurring
+                    ? "この日付から、指定した間隔で繰り返します。"
+                    : "";
+        }
+
+        function openForm(date, event = null, periodIndex = 0) {
+            editing = event ? { event, date } : null;
+
+            repeatMode.querySelector('option[value="once"]').disabled = false;
+            form.reset();
+
+            $("reminder-mode").value = "none";
+            $("reminder-value").value = 30;
+            $("reminder-unit").value = "1";
+            $("allday-reminder-time").value = "09:00";
+
+
+            $("event-category").value = "other";
+            $("event-color").value = categorySettings.other.color;
+            $("event-memo").value = "";
+
+            dateInput.value = date;
+            periodSelect.value = periodIndex;
+            repeatMode.value = "once";
+            $("repeat-interval").value = 1;
+
+            $("form-title").textContent =
+                event ? "予定を編集" : "予定を追加";
+            $("save-button").textContent =
+                event ? "変更を保存" : "追加する";
+            $("delete-button").hidden = !event;
+
+            if (event) {
+                titleInput.value = event.title;
+
+                if (event.reminder) {
+                    $("reminder-mode").value = "custom";
+
+                    const minutes = event.reminder.minutesBefore;
+
+                    if (minutes > 0 && minutes % 1440 === 0) {
+                        $("reminder-value").value = minutes / 1440;
+                        $("reminder-unit").value = "1440";
+                    } else if (minutes > 0 && minutes % 60 === 0) {
+                        $("reminder-value").value = minutes / 60;
+                        $("reminder-unit").value = "60";
+                    } else {
+                        $("reminder-value").value = minutes;
+                        $("reminder-unit").value = "1";
+                    }
+
+                    $("allday-reminder-time").value =
+                        event.reminder.allDayTime || "09:00";
+                }
+
+                $("event-category").value =
+                    categorySettings[event.category] ? event.category : "other";
+
+                $("event-memo").value = event.memo || "";
+
+                $("event-color").value = event.color || "blue";
+
+                startInput.value = event.allDay ? "" : event.start;
+                endInput.value = event.allDay ? "" : event.end;
+
+                const source = findRepeatSource(event);
+
+                repeatMode.value = source ? source.repeat : "once";
+                $("repeat-interval").value = source
+                    ? source.interval || 1
+                    : 1;
+                repeatUntil.value = source ? source.until || "" : "";
+
+                const index = periods.findIndex(period =>
+                    period.start === event.start &&
+                    period.end === event.end
+                );
+
+                timeMode.value = event.allDay
+                    ? "allday"
+                    : index >= 0 ? "period" : "time";
+
+                if (index >= 0) periodSelect.value = index;
+            }
+
+            updateFields();
+            updateReminderFields();
+            dialog.showModal();
+            titleInput.focus();
+        } [timeMode, repeatMode, scopeInput, dateInput].forEach(input => {
+            input.addEventListener("change", updateFields);
+        });
+
+        $("add-button").addEventListener("click", () => {
+            openForm(dateText(new Date()));
+        });
+
+        $("cancel-button").addEventListener("click", () => {
+            dialog.close();
+        });
+        function eventButton(event, date, includeDate = false) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "event-button";
+
+            button.dataset.color = event.color || "blue";
+
+            const prefix = includeDate ? `${shortDate(date)}　` : "";
+            const repeatLabel =
+                event.repeat && event.repeat !== "once" ? " ↻" : "";
+
+            const timeLabel = event.allDay
+                ? "終日"
+                : `${event.start}〜${event.end}`;
+
+            const category =
+                categorySettings[event.category] || categorySettings.other;
+
+            const memoMark = event.memo ? " 📝" : "";
+
+            button.textContent =
+                `${prefix}${event.title}${repeatLabel}${memoMark}\n` +
+                `${timeLabel}・${category.name}`;
+            button.addEventListener("click", () => openForm(date, event));
+            return button;
+        }
+
+        function render() {
+            renderMonth();
+            renderDay();
+
+            const days = Array.from({ length: 7 }, (_, i) =>
+                addDays(shownMonday, i)
+            );
+
+            $("week-title").textContent =
+                `${parseDate(shownMonday).getFullYear()}年 ` +
+                `${shortDate(days[0])}〜${shortDate(days[6])}`;
+
+            const table = $("week-table");
+            table.replaceChildren();
+
+            const head = table.createTHead().insertRow();
+            const corner = document.createElement("th");
+            corner.textContent = "コマ";
+            head.appendChild(corner);
+
+            days.forEach(date => {
+                const th = document.createElement("th");
+                th.scope = "col";
+                th.textContent = shortDate(date);
+                if (date === dateText(new Date())) th.className = "today";
+                head.appendChild(th);
+            });
+
+            const body = table.createTBody();
+
+            // 時間割の一番上に、終日の予定を表示する
+            const allDayRow = body.insertRow();
+            const allDayLabel = document.createElement("th");
+            allDayLabel.scope = "row";
+            allDayLabel.textContent = "終日";
+            allDayRow.appendChild(allDayLabel);
+
+            days.forEach(date => {
+                const cell = allDayRow.insertCell();
+
+                eventsOn(date)
+                    .filter(event => event.allDay)
+                    .forEach(event => {
+                        cell.appendChild(eventButton(event, date));
+                    });
+
+                const add = document.createElement("button");
+                add.type = "button";
+                add.className = "add-slot";
+                add.textContent = "＋";
+                add.setAttribute(
+                    "aria-label", `${shortDate(date)}に終日の予定を追加`
+                );
+
+                add.addEventListener("click", () => {
+                    openForm(date);
+                    timeMode.value = "allday";
+                    updateFields();
+
+                    updateReminderFields();
+                });
+
+                cell.appendChild(add);
+            });
+
+            periods.forEach((period, index) => {
+                const row = body.insertRow();
+                const label = document.createElement("th");
+                label.scope = "row";
+                label.textContent = period.name;
+
+                const time = document.createElement("small");
+                time.textContent = `${period.start}〜${period.end}`;
+                label.appendChild(time);
+                row.appendChild(label);
+
+                days.forEach(date => {
+                    const cell = row.insertCell();
+
+                    eventsOn(date).filter(event =>
+                        !event.allDay &&
+                        event.start < period.end &&
+                        event.end > period.start
+                    ).forEach(event => {
+                        cell.appendChild(eventButton(event, date));
+                    });
+
+                    const add = document.createElement("button");
+                    add.type = "button";
+                    add.className = "add-slot";
+                    add.textContent = "＋";
+                    add.setAttribute(
+                        "aria-label", `${shortDate(date)} ${period.name}に追加`
+                    );
+                    add.addEventListener("click", () => openForm(date, null, index));
+                    cell.appendChild(add);
+                });
+            });
+
+            const list = $("week-list");
+            list.replaceChildren();
+
+            days.forEach(date => {
+                eventsOn(date).forEach(event => {
+                    const item = document.createElement("li");
+                    item.appendChild(eventButton(event, date, true));
+                    list.appendChild(item);
+                });
+            });
+
+            if (!list.children.length) {
+                const item = document.createElement("li");
+                item.textContent = "この週の予定はありません。";
+                list.appendChild(item);
+            }
+        }
+
+        $("prev-week").addEventListener("click", () => {
+            shownMonday = addDays(shownMonday, -7);
+            render();
+        });
+
+        $("next-week").addEventListener("click", () => {
+            shownMonday = addDays(shownMonday, 7);
+            render();
+        });
+
+        $("this-week").addEventListener("click", () => {
+            shownMonday = mondayOf(dateText(new Date()));
+            render();
+        });
+
+        // 保存成功後に、画面とアプリ内のデータを更新する
+        function saveEvents(nextEvents) {
+            if (!storageReadable) {
+                alert("読み込みエラーのため保存できません。");
+                return false;
+            }
+
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(nextEvents));
+            } catch {
+                alert("保存できませんでした。変更は反映していません。");
+                return false;
+            }
+
+            events = nextEvents;
+            return true;
+        }
+
+        function copyEvents() {
+            return events.map(event => ({
+                ...event,
+                exceptions: [...event.exceptions]
+            }));
+        }
+
+        // 選択した回だけ、元の繰り返し予定を非表示にする
+        function skipOccurrence(data, id, date) {
+            const original = data.find(event => event.id === id);
+            if (!original.exceptions.includes(date)) {
+                original.exceptions.push(date);
+            }
+        }
+
+        // 選択した日以降の繰り返しを止める
+        function stopFuture(data, original, date) {
+            const cutoff = addDays(date, -1);
+
+            return data
+                .filter(event => !(
+                    event.parentId === original.id &&
+                    event.originalDate >= date
+                ))
+                .filter(event => !(
+                    event.id === original.id && original.date >= date
+                ))
+                .map(event => event.id === original.id
+                    ? {
+                        ...event,
+                        until: event.until && event.until < cutoff
+                            ? event.until : cutoff,
+                        exceptions: event.exceptions.filter(day => day < date)
+                    }
+                    : event
+                );
+        }
+
+
+        let pendingAction = null;
+
+        function askActionScope(type, draft = null) {
+            const selected = editing.event;
+            const baseDate = selected.parentId
+                ? selected.originalDate
+                : editing.date;
+
+            pendingAction = { type, draft };
+
+            $("action-scope").value = "one";
+            $("scope-dialog-title").textContent =
+                type === "delete" ? "削除する範囲" : "変更する範囲";
+
+            $("scope-dialog-message").textContent =
+                `${shortDate(editing.date)}「${selected.title}」` +
+                `（繰り返しの基準となる回：${shortDate(baseDate)}）`;
+
+            $("apply-scope").textContent =
+                type === "delete" ? "この範囲を削除" : "この範囲に変更を適用";
+
+            $("apply-scope").classList.toggle("danger", type === "delete");
+            $("scope-dialog").showModal();
+        }
+
+        function finishAction(nextEvents, destination = null) {
+            if (!saveEvents(nextEvents)) return;
+
+            if ($("scope-dialog").open) {
+                $("scope-dialog").close();
+            }
+
+            dialog.close();
+            pendingAction = null;
+
+            if (destination) {
+                shownDay = destination;
+                shownMonday = mondayOf(destination);
+
+                const date = parseDate(destination);
+                monthCursor = new Date(
+                    date.getFullYear(), date.getMonth(), 1
+                );
+            }
+
+            render();
+        }
+
+        form.addEventListener("submit", event => {
+            event.preventDefault();
+
+            const title = titleInput.value.trim();
+
+            if (!title) {
+                alert("予定名を入力してください。");
+                return;
+            }
+
+            const period = periods[Number(periodSelect.value)];
+            const usePeriod = timeMode.value === "period";
+            const allDay = timeMode.value === "allday";
+
+            const start = allDay
+                ? "00:00"
+                : usePeriod ? period.start : startInput.value;
+
+            const end = allDay
+                ? "24:00"
+                : usePeriod ? period.end : endInput.value;
+
+            const recurring = useWeekly();
+            const interval = recurring
+                ? Number($("repeat-interval").value)
+                : 1;
+
+            if (!start || !end || end <= start) {
+                alert("終了時刻は開始時刻より後にしてください。");
+                return;
+            }
+
+            if (!Number.isInteger(interval) ||
+                interval < 1 || interval > 999) {
+                alert("繰り返しの間隔は1〜999の整数で入力してください。");
+                return;
+            }
+
+
+            let reminder = null;
+
+            if ($("reminder-mode").value === "custom") {
+                const value = Number($("reminder-value").value);
+                const unit = Number($("reminder-unit").value);
+                const minutesBefore = value * unit;
+
+                if (
+                    !Number.isInteger(value) ||
+                    value < 0 ||
+                    !Number.isFinite(minutesBefore) ||
+                    minutesBefore > 10080
+                ) {
+                    alert("通知は開始時刻から7日前までの範囲で指定してください。");
+                    return;
+                }
+
+                reminder = {
+                    minutesBefore,
+                    allDayTime: $("allday-reminder-time").value || "09:00"
+                };
+            }
+
+            const draft = {
+                title,
+                date: dateInput.value,
+                start,
+                end,
+                allDay,
+                color: $("event-color").value,
+
+                category: $("event-category").value,
+                memo: $("event-memo").value,
+                reminder,
+
+                repeat: recurring ? repeatMode.value : "once",
+                interval,
+                until: recurring ? repeatUntil.value : ""
+            };
+
+            // 繰り返し予定の編集では、ここではまだ保存しない
+            if (editingWeekly()) {
+                askActionScope("edit", draft);
+                return;
+            }
+
+            if (draft.until && draft.until < draft.date) {
+                alert("終了日は、開始日以降にしてください。");
+                return;
+            }
+
+            let nextEvents = copyEvents();
+
+            if (editing) {
+                nextEvents = nextEvents.map(item =>
+                    item.id === editing.event.id
+                        ? { ...item, ...draft }
+                        : item
+                );
+            } else {
+                nextEvents.push({
+                    ...draft,
+                    id: makeId(),
+                    exceptions: []
+                });
+            }
+
+            finishAction(nextEvents, draft.date);
+        });
+
+        $("delete-button").addEventListener("click", () => {
+            if (!editing) return;
+
+            if (editingWeekly()) {
+                askActionScope("delete");
+                return;
+            }
+
+            if (!confirm(`「${editing.event.title}」を削除しますか？`)) {
+                return;
+            }
+
+            const nextEvents = copyEvents().filter(item =>
+                item.id !== editing.event.id
+            );
+
+            finishAction(nextEvents);
+        });
+
+        $("cancel-scope").addEventListener("click", () => {
+            $("scope-dialog").close();
+        });
+
+        // Escキーで戻った場合も、保留中の操作を取り消す
+        $("scope-dialog").addEventListener("close", () => {
+            pendingAction = null;
+        });
+
+        $("apply-scope").addEventListener("click", () => {
+            if (!pendingAction || !editing) return;
+
+            const { type, draft } = pendingAction;
+            const selected = editing.event;
+            const source = findRepeatSource(selected);
+
+            if (!source) {
+                alert("元の繰り返し予定が見つかりませんでした。");
+                return;
+            }
+
+            const range = $("action-scope").value;
+            const baseDate = selected.parentId
+                ? selected.originalDate
+                : editing.date;
+
+            let nextEvents = copyEvents();
+
+            if (range === "future") {
+                if (type === "edit") {
+                    if (draft.date < baseDate) {
+                        alert(
+                            "「この日以降すべて」の変更では、基準の回より前には移動できません。" +
+                            "前の日へ移動する場合は「この日だけ」を選んでください。"
+                        );
+                        return;
+                    }
+
+                    if (draft.until && draft.until < draft.date) {
+                        alert(
+                            "終了日が変更後の日付より前になっています。" +
+                            "「戻る」を押して終了日を修正してください。"
+                        );
+                        return;
+                    }
+                }
+
+                // 元の繰り返しを基準日の前日で区切る
+                // 同じ範囲の個別変更も取り除く
+                nextEvents = stopFuture(nextEvents, source, baseDate);
+
+                if (type === "edit") {
+                    nextEvents.push({
+                        ...draft,
+                        id: makeId(),
+                        exceptions: []
+                    });
+                }
+
+            } else {
+                // この日だけの変更・削除
+                if (selected.id === source.id) {
+                    skipOccurrence(nextEvents, source.id, baseDate);
+                } else {
+                    // 以前に個別変更した予定を取り除く
+                    nextEvents = nextEvents.filter(item =>
+                        item.id !== selected.id
+                    );
+                }
+
+                if (type === "edit") {
+                    nextEvents.push({
+                        ...draft,
+                        id: selected.id === source.id ? makeId() : selected.id,
+                        repeat: "once",
+                        interval: 1,
+                        until: "",
+                        exceptions: [],
+                        parentId: source.id,
+                        originalDate: baseDate
+                    });
+                }
+            }
+
+            finishAction(
+                nextEvents,
+                type === "edit" ? draft.date : null
+            );
+        });
+
+        let monthCursor = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth(),
+            1
+        );
+
+        function changeView(view) {
+            const daily = view === "day";
+            const weekly = view === "week";
+            const monthly = view === "month";
+
+            $("day-panel").hidden = !daily;
+            $("week-panel").hidden = !weekly;
+            $("week-list-panel").hidden = !weekly;
+            $("month-panel").hidden = !monthly;
+
+            $("prev-week").hidden = !weekly;
+            $("this-week").hidden = !weekly;
+            $("next-week").hidden = !weekly;
+
+            [
+                ["show-day", daily],
+                ["show-week", weekly],
+                ["show-month", monthly]
+            ].forEach(([id, active]) => {
+                $(id).classList.toggle("secondary", !active);
+                $(id).setAttribute("aria-pressed", String(active));
+            });
+
+            render();
+        }
+
+        $("show-week").addEventListener("click", () => {
+            changeView("week");
+        });
+
+        $("show-month").addEventListener("click", () => {
+            changeView("month");
+        });
+
+        $("prev-month").addEventListener("click", () => {
+            monthCursor = new Date(
+                monthCursor.getFullYear(),
+                monthCursor.getMonth() - 1,
+                1
+            );
+            renderMonth();
+        });
+
+        $("next-month").addEventListener("click", () => {
+            monthCursor = new Date(
+                monthCursor.getFullYear(),
+                monthCursor.getMonth() + 1,
+                1
+            );
+            renderMonth();
+        });
+
+        $("this-month").addEventListener("click", () => {
+            const today = new Date();
+            monthCursor = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                1
+            );
+            renderMonth();
+        });
+
+        function renderMonth() {
+            const year = monthCursor.getFullYear();
+            const month = monthCursor.getMonth();
+
+            $("month-title").textContent = `${year}年 ${month + 1}月`;
+            $("jump-month").value =
+                `${String(year).padStart(4, "0")}-` +
+                `${String(month + 1).padStart(2, "0")}`;
+
+            const firstDate = dateText(monthCursor);
+            const gridStart = mondayOf(firstDate);
+            const lastDate = dateText(new Date(year, month + 1, 0));
+
+            const table = $("month-table");
+            table.replaceChildren();
+
+            const head = table.createTHead().insertRow();
+
+            ["月", "火", "水", "木", "金", "土", "日"].forEach(day => {
+                const th = document.createElement("th");
+                th.scope = "col";
+                th.textContent = day;
+                head.appendChild(th);
+            });
+
+            const body = table.createTBody();
+
+            for (let week = 0; week < 6; week++) {
+                const weekStart = addDays(gridStart, week * 7);
+                if (weekStart > lastDate) break;
+
+                const row = body.insertRow();
+
+                for (let day = 0; day < 7; day++) {
+                    const date = addDays(weekStart, day);
+                    const parsed = parseDate(date);
+                    const cell = row.insertCell();
+
+                    if (parsed.getMonth() !== month) {
+                        cell.classList.add("outside-month");
+                    }
+
+                    const label = document.createElement("div");
+                    label.className = "day-label";
+                    label.textContent = parsed.getDate();
+
+                    if (date === dateText(new Date())) {
+                        label.classList.add("today");
+                    }
+
+                    cell.appendChild(label);
+
+                    eventsOn(date).forEach(event => {
+                        cell.appendChild(eventButton(event, date));
+                    });
+
+                    const add = document.createElement("button");
+                    add.type = "button";
+                    add.className = "add-slot";
+                    add.textContent = "＋";
+                    add.setAttribute(
+                        "aria-label", `${shortDate(date)}に予定を追加`
+                    );
+
+                    add.addEventListener("click", () => {
+                        openForm(date);
+                    });
+
+                    cell.appendChild(add);
+                }
+            }
+        }
+        $("jump-month-button").addEventListener("click", () => {
+            const value = $("jump-month").value;
+
+            if (!value || !$("jump-month").checkValidity()) {
+                alert("移動する年月を選んでください。");
+                return;
+            }
+
+            const [year, month] = value.split("-").map(Number);
+
+            if (!Number.isInteger(year) || year < 1 ||
+                !Number.isInteger(month) || month < 1 || month > 12) {
+                alert("正しい年月を選んでください。");
+                return;
+            }
+
+            monthCursor = new Date();
+            monthCursor.setDate(1);
+            monthCursor.setFullYear(year, month - 1, 1);
+            renderMonth();
+        });
+
+        $("event-category").addEventListener("change", () => {
+            const category = categorySettings[$("event-category").value];
+            $("event-color").value = category.color;
+        });
+
+        let shownDay = dateText(new Date());
+
+        function renderDay() {
+            $("day-date").value = shownDay;
+
+            $("day-title").textContent =
+                `${parseDate(shownDay).getFullYear()}年 ${shortDate(shownDay)}`;
+
+            const list = $("day-list");
+            list.replaceChildren();
+
+            const dayEvents = eventsOn(shownDay).sort((a, b) => {
+                // 終日の予定を先に表示する
+                const allDayOrder =
+                    Number(Boolean(b.allDay)) - Number(Boolean(a.allDay));
+
+                if (allDayOrder !== 0) return allDayOrder;
+
+                return a.start.localeCompare(b.start);
+            });
+
+            if (dayEvents.length === 0) {
+                const item = document.createElement("li");
+                item.textContent = "この日の予定はありません。";
+                list.appendChild(item);
+                return;
+            }
+
+            dayEvents.forEach(event => {
+                const item = document.createElement("li");
+
+                // 既存のボタンを使うので、色・分類・編集にも対応する
+                item.appendChild(eventButton(event, shownDay));
+
+                if (event.memo) {
+                    const memo = document.createElement("p");
+                    memo.className = "day-memo";
+                    memo.textContent = event.memo;
+                    item.appendChild(memo);
+                }
+
+                list.appendChild(item);
+            });
+        }
+
+        $("show-day").addEventListener("click", () => {
+            changeView("day");
+        });
+
+        $("prev-day").addEventListener("click", () => {
+            shownDay = addDays(shownDay, -1);
+            renderDay();
+        });
+
+        $("next-day").addEventListener("click", () => {
+            shownDay = addDays(shownDay, 1);
+            renderDay();
+        });
+
+        $("today-button").addEventListener("click", () => {
+            shownDay = dateText(new Date());
+            renderDay();
+        });
+
+        $("day-date").addEventListener("change", () => {
+            const input = $("day-date");
+
+            if (!input.value || !input.checkValidity()) return;
+
+            shownDay = input.value;
+            renderDay();
+        });
+
+        $("add-day-event").addEventListener("click", () => {
+            openForm(shownDay);
+        });
+
+        function updateReminderFields() {
+            const enabled = $("reminder-mode").value === "custom";
+            const allDay = timeMode.value === "allday";
+
+            $("reminder-fields").hidden = !enabled;
+            $("reminder-value").disabled = !enabled;
+            $("reminder-value").required = enabled;
+            $("reminder-unit").disabled = !enabled;
+
+            $("allday-reminder-fields").hidden = !enabled || !allDay;
+            $("allday-reminder-time").disabled = !enabled || !allDay;
+            $("allday-reminder-time").required = enabled && allDay;
+        }
+
+        $("reminder-mode").addEventListener("change", updateReminderFields);
+        timeMode.addEventListener("change", updateReminderFields);
+
+        // 朝の通知設定は、予定とは別に保存する
+        const morningStorageKey = "kazu-morning-settings-v1";
+        let morningReadable = true;
+
+        try {
+            const savedMorning = JSON.parse(
+                localStorage.getItem(morningStorageKey) || "null"
+            );
+
+            if (savedMorning) {
+                if (
+                    typeof savedMorning.enabled !== "boolean" ||
+                    typeof savedMorning.time !== "string" ||
+                    !/^([01]\d|2[0-3]):[0-5]\d$/.test(savedMorning.time)
+                ) {
+                    throw new Error("設定の形式が違います");
+                }
+
+                $("morning-enabled").value =
+                    savedMorning.enabled ? "on" : "off";
+                $("morning-time").value = savedMorning.time;
+            }
+        } catch {
+            morningReadable = false;
+            $("save-morning").disabled = true;
+            $("morning-status").textContent =
+                "保存済みの設定を読み込めませんでした。上書きを停止しています。";
+        }
+
+        function updateMorningFields() {
+            $("morning-time").disabled =
+                $("morning-enabled").value !== "on";
+        }
+
+        $("morning-enabled").addEventListener(
+            "change", updateMorningFields
+        );
+
+        $("save-morning").addEventListener("click", () => {
+            if (!morningReadable) return;
+
+            const enabled = $("morning-enabled").value === "on";
+            const time = $("morning-time").value || "07:30";
+
+            if (enabled && !$("morning-time").value) {
+                alert("朝の通知時刻を入力してください。");
+                return;
+            }
+
+            try {
+                localStorage.setItem(morningStorageKey, JSON.stringify({
+                    enabled,
+                    time,
+                    timezone: "Asia/Tokyo",
+                    notifyWhenEmpty: true
+                }));
+
+                $("morning-status").textContent =
+                    "設定を保存しました。通知の配信はまだ始まりません。";
+            } catch {
+                $("morning-status").textContent =
+                    "設定を保存できませんでした。";
+            }
+        });
+
+        updateMorningFields();
+
+        render();
+    </script>
+</body>
+
+</html>
