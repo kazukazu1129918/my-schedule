@@ -1799,7 +1799,7 @@ dialog .note{display:block}
     settingsDialog.append(backupButton);
     backupButton.addEventListener("click",()=>{
       if(!storageReadable){alert("予定を読み込めていないため書き出せません。");return;}
-      const file=new Blob([JSON.stringify({version:1,events,morning:localStorage.getItem(morningStorageKey)},null,2)],{type:"application/json"});
+      const file=new Blob([JSON.stringify({version:1,events,morning:(window.scheduleCloudMorning || localStorage.getItem(morningStorageKey))},null,2)],{type:"application/json"});
       const url=URL.createObjectURL(file),a=document.createElement("a");
       a.href=url;a.download="schedule-backup-"+dateText(new Date())+".json";a.click();
       setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -1807,6 +1807,240 @@ dialog .note{display:block}
     let resizeTimer;
     window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>render(),150);});
     changeView("week");
+
+</script>
+<script>
+// Supabaseの公開用キー。秘密キーはここに置かない。
+(() => {
+  const PROJECT_URL = 'https://bkunvmwofsagvuxwstln.supabase.co';
+  const PUBLIC_KEY = 'sb_publishable_CiSVKJdyrmSzft2YurMrGg_bt4CrvJB';
+  const HOME_URL = 'https://kazukazu1129918.github.io/my-schedule/';
+  const cloud = { client: null, user: null, ready: false, revision: null,
+    busy: false, booting: true, epoch: 0, settings: {} };
+  const localSave = saveEvents;
+  let localEvents = copyEvents();
+  let localMorning = { enabled: $('morning-enabled').value === 'on',
+    time: $('morning-time').value || '07:30', timezone: 'Asia/Tokyo', notifyWhenEmpty: true };
+  const panel = document.createElement('section');
+  panel.className = 'panel';
+  const style = document.createElement('style');
+  style.textContent = '#settings-dialog .note{display:block} #cloud-status{font-weight:bold;overflow-wrap:anywhere}';
+  document.head.append(style);
+  panel.innerHTML = `
+    <h2>ログイン・同期</h2>
+    <p id="cloud-status" class="note" role="status">接続の準備中…</p>
+    <p class="note">ログイン中は予定と朝の設定をクラウドへ保存します。別の端末では同じアカウントでログインし、「最新の予定を読み込む」を押してください。クラウドへの保存には通信が必要です。</p>
+    <form id="cloud-login-form">
+      <p><label for="cloud-email">メールアドレス</label><input id="cloud-email" type="email" autocomplete="username" required></p>
+      <p><label for="cloud-password">予定表用パスワード</label><input id="cloud-password" type="password" autocomplete="current-password" minlength="8" required></p>
+      <div class="actions"><button id="cloud-login" type="submit">ログイン</button><button id="cloud-signup" class="secondary" type="button">初めての登録</button></div>
+      <p class="note">Supabase管理画面とは別の、予定表用アカウントです。初めての登録では8文字以上のパスワードを決めてください。パスワードはチャットに送らないでください。</p>
+    </form>
+    <div id="cloud-controls" hidden>
+      <p id="cloud-account" class="note"></p>
+      <div class="actions"><button id="cloud-refresh" class="secondary" type="button">最新の予定を読み込む</button><button id="cloud-logout" class="secondary" type="button">ログアウト</button></div>
+      <div id="cloud-first" hidden>
+        <p class="note">このアカウントにはまだ予定がありません。今この端末にある予定を引き継ぐか、空の予定表で始めるか選んでください。引き継ぐ前に「予定を書き出す」でバックアップできます。</p>
+        <div class="actions"><button id="cloud-import" type="button">この端末の予定を引き継ぐ</button><button id="cloud-empty" class="secondary" type="button">空の予定表で始める</button></div>
+      </div>
+    </div>
+    <p class="note">通知はまだ配信されません。通知設定は保存できます。</p>`;
+  settingsDialog.insertBefore(panel, $('morning-enabled').closest('section'));
+  const badge = document.createElement('small');
+  badge.style.cssText = 'display:block;font-size:10px;line-height:1.2;color:#526078';
+  document.querySelector('.topbar h1')?.append(badge);
+
+  function status(message) { $('cloud-status').textContent = message; }
+  function controls() {
+    $('cloud-login-form').hidden = Boolean(cloud.user);
+    $('cloud-controls').hidden = !cloud.user;
+    $('cloud-account').textContent = cloud.user?.email || '';
+    $('cloud-first').hidden = !cloud.user || cloud.ready || cloud.revision !== null;
+    ['cloud-login', 'cloud-signup', 'cloud-refresh', 'cloud-logout', 'cloud-import', 'cloud-empty'].forEach(id => {
+      $(id).disabled = cloud.busy || cloud.booting || !cloud.client;
+    });
+    badge.textContent = cloud.user ? (cloud.ready ? 'クラウド保存' : 'クラウド確認中') : 'この端末に保存';
+  }
+  function morningValue() {
+    return { enabled: $('morning-enabled').value === 'on', time: $('morning-time').value || '07:30',
+      timezone: 'Asia/Tokyo', notifyWhenEmpty: true };
+  }
+  function showMorning(value) {
+    const setting = value && typeof value.enabled === 'boolean' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)
+      ? value : { enabled: false, time: '07:30' };
+    $('morning-enabled').value = setting.enabled ? 'on' : 'off';
+    $('morning-time').value = setting.time;
+    $('morning-status').textContent = '';
+    updateMorningFields();
+    window.scheduleCloudMorning = cloud.user ? JSON.stringify(setting) : null;
+  }
+  function errorMessage(error) {
+    const message = String(error?.message || error || '通信エラー');
+    if (/Invalid login credentials/i.test(message)) return 'メールアドレスかパスワードが違います。初めてなら先に登録してください。';
+    if (/Email not confirmed/i.test(message)) return '確認メールのリンクを開いてからログインしてください。';
+    if (/rate.limit|too many requests|security purposes/i.test(message)) return '試行回数の制限に達しました。少し待ってから試してください。';
+    if (/email.*not authorized|sending.*email/i.test(message)) return '確認メールを送れませんでした。Supabase管理画面で使っているメールアドレスで試してください。';
+    return '処理できませんでした：' + message;
+  }
+  function checkedEvents(data) {
+    if (!Array.isArray(data) || data.some(e => !e || typeof e.id !== 'string' || typeof e.title !== 'string' ||
+      typeof e.date !== 'string' || typeof e.start !== 'string' || typeof e.end !== 'string')) {
+      throw new Error('保存済みの予定の形式を確認できません。上書きを停止します。');
+    }
+    return data.map(e => ({ ...e, exceptions: Array.isArray(e.exceptions) ? e.exceptions : [] }));
+  }
+  function adopt(row) {
+    const next = checkedEvents(row.events);
+    if (!Number.isSafeInteger(row.revision) || row.revision < 0) throw new Error('保存履歴を確認できません。');
+    events = next;
+    cloud.revision = row.revision;
+    cloud.settings = row.settings && typeof row.settings === 'object' && !Array.isArray(row.settings) ? row.settings : {};
+    cloud.ready = true;
+    showMorning(cloud.settings.morning);
+    render(); controls(); status('クラウドの予定を読み込みました。変更するとクラウドへ保存します。');
+  }
+  async function loadCloud() {
+    if (!cloud.user || cloud.busy) return;
+    const epoch = cloud.epoch, uid = cloud.user.id;
+    cloud.busy = true; cloud.ready = false; controls(); status('クラウドの予定を確認中…');
+    try {
+      const { data, error } = await cloud.client.from('schedule_data').select('*').eq('user_id', uid).maybeSingle();
+      if (epoch !== cloud.epoch) return;
+      if (error) throw error;
+      if (data) adopt(data);
+      else { cloud.revision = null; status('最初の保存方法を選んでください。'); }
+    } catch (error) { if (epoch === cloud.epoch) status(errorMessage(error)); }
+    finally { if (epoch === cloud.epoch) { cloud.busy = false; controls(); } }
+  }
+  async function startCloud(importLocal) {
+    if (!cloud.user || cloud.busy || cloud.ready || cloud.revision !== null) return;
+    if (importLocal && (!storageReadable || !morningReadable)) {
+      status('この端末のデータを読み込めていないため引き継げません。'); return;
+    }
+    if (!confirm(importLocal ? 'この端末の予定と朝の設定を、ログイン中のアカウントへ保存しますか？' : '空の予定表で始めますか？この端末だけに保存した予定は残ります。')) return;
+    const epoch = cloud.epoch, uid = cloud.user.id;
+    cloud.busy = true; controls();
+    try {
+      const { data, error } = await cloud.client.from('schedule_data').insert({ user_id: uid,
+        events: importLocal ? localEvents : [], settings: { morning: importLocal ? localMorning : {enabled:false,time:'07:30',timezone:'Asia/Tokyo',notifyWhenEmpty:true} }, revision: 0 }).select('*').single();
+      if (epoch !== cloud.epoch) return;
+      if (error) throw error;
+      adopt(data);
+    } catch (error) {
+      if (epoch === cloud.epoch) status(error?.code === '23505' ? '別の端末で保存済みです。「最新の予定を読み込む」を押してください。' : errorMessage(error));
+    } finally { if (epoch === cloud.epoch) {cloud.busy = false; controls();} }
+  }
+  async function commit(nextEvents, nextSettings) {
+    if (!cloud.ready || cloud.busy) { alert('クラウドの確認・保存が終わってから、もう一度操作してください。設定画面で接続状態を確認できます。'); return false; }
+    const epoch = cloud.epoch, uid = cloud.user.id, revision = cloud.revision;
+    cloud.busy = true; controls(); status('クラウドへ保存中…');
+    try {
+      const { data, error } = await cloud.client.from('schedule_data').update({ events: nextEvents,
+        settings: nextSettings, revision: revision + 1, updated_at: new Date().toISOString() })
+        .eq('user_id', uid).eq('revision', revision).select('*').maybeSingle();
+      if (epoch !== cloud.epoch) return false;
+      if (error) throw error;
+      if (!data) {
+        cloud.ready = false;
+        throw new Error('別の端末で予定が更新されています。変更内容を控え、編集をキャンセルして、設定の「最新の予定を読み込む」を押してください。今回の変更は保存していません。');
+      }
+      events = checkedEvents(data.events); cloud.revision = data.revision; cloud.settings = data.settings;
+      window.scheduleCloudMorning = JSON.stringify(cloud.settings.morning || null);
+      status('クラウドへ保存しました。'); return true;
+    } catch (error) { if(epoch === cloud.epoch) {status(errorMessage(error)); alert(errorMessage(error));} return false; }
+    finally { if(epoch === cloud.epoch) {cloud.busy = false; controls();} }
+  }
+  saveEvents = async function(nextEvents) {
+    if (cloud.booting) {alert('ログイン状態を確認中です。少し待ってもう一度保存してください。'); return false;}
+    if (!cloud.user) {const ok = localSave(nextEvents); if(ok) localEvents = copyEvents(); return ok;}
+    return commit(nextEvents, cloud.settings);
+  };
+  // 既存の呼び出し元はそのままに、保存が成功してから編集画面を閉じる。
+  finishAction = async function(nextEvents, destination = null) {
+    if (!(await saveEvents(nextEvents))) return;
+    if ($('scope-dialog').open) $('scope-dialog').close();
+    dialog.close(); pendingAction = null;
+    if(destination) { shownDay=destination; shownMonday=mondayOf(destination);
+      const day=parseDate(destination);monthCursor=new Date(day.getFullYear(),day.getMonth(),1); }
+    render();
+  };
+  $('save-morning').addEventListener('click', async event => {
+    if(cloud.booting || cloud.user) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      if(cloud.booting) {status('ログイン状態を確認中です。');return;}
+      if($('morning-enabled').value==='on' && !$('morning-time').value) {alert('通知時刻を入力してください。');return;}
+      if(await commit(events, {...cloud.settings,morning:morningValue()})) $('morning-status').textContent='クラウドへ保存しました。通知配信は準備中です。';
+    } else {
+      // 既存のローカル保存処理の完了後に、引き継ぎ用の値を更新する。
+      setTimeout(()=>{try { localMorning=JSON.parse(localStorage.getItem(morningStorageKey))||localMorning; }catch{}},0);
+    }
+  }, true);
+  async function sessionChanged(session) {
+    const user = session?.user || null;
+    if (user?.id === cloud.user?.id) return;
+    cloud.epoch++; cloud.busy=false;cloud.ready=false;cloud.revision=null;
+    if (!cloud.user) { localEvents=copyEvents(); localMorning=morningValue(); }
+    cloud.user=user;
+    ['event-dialog','scope-dialog'].forEach(id=>{if($(id).open)$(id).close();});
+    pendingAction=null;editing=null;
+    $('cloud-password').value='';
+    controls();
+    if(user) await loadCloud();
+    else { events=localEvents.map(e=>({...e,exceptions:[...e.exceptions]}));showMorning(localMorning);render();
+      status('ログアウトしました。この端末だけに保存した予定を表示しています。'); }
+  }
+  $('cloud-login-form').addEventListener('submit', async event => {
+    event.preventDefault(); await authenticate(false);
+  });
+  $('cloud-signup').addEventListener('click', ()=>authenticate(true));
+  async function authenticate(signup) {
+    if(cloud.busy||cloud.booting||!cloud.client||!$('cloud-login-form').reportValidity()) return;
+    const epoch = cloud.epoch;
+    cloud.busy=true;controls();status(signup?'登録中…':'ログイン中…');
+    try {
+      const credentials={email:$('cloud-email').value.trim(),password:$('cloud-password').value};
+      const {data,error}=signup ? await cloud.client.auth.signUp({...credentials,options:{emailRedirectTo:HOME_URL}})
+        : await cloud.client.auth.signInWithPassword(credentials);
+      if(error)throw error;
+      if(!data.session)status('確認メールを送信しました。メール内のリンクを開き、その後この予定表でログインしてください。');
+      $('cloud-password').value='';
+    }catch(error){status(errorMessage(error));}
+    finally{if(epoch===cloud.epoch)cloud.busy=false;controls();}
+  }
+  $('cloud-import').addEventListener('click',()=>startCloud(true));
+  $('cloud-empty').addEventListener('click',()=>startCloud(false));
+  $('cloud-refresh').addEventListener('click',()=>loadCloud());
+  $('cloud-logout').addEventListener('click',async()=>{
+    if(cloud.busy)return;
+    const {error}=await cloud.client.auth.signOut({scope:'local'});
+    if(error)status(errorMessage(error));
+  });
+  controls();
+  const sdk=document.createElement('script');
+  sdk.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  let timeout=setTimeout(failed,15000);
+  function failed(){if(cloud.client)return;cloud.booting=false;status('接続用ファイルを読み込めません。この端末への保存は使えます。通信を確認して再読み込みしてください。');controls();}
+  sdk.onerror=failed;
+  sdk.onload=async()=>{
+    clearTimeout(timeout);
+    try{
+      cloud.client=window.supabase.createClient(PROJECT_URL,PUBLIC_KEY,{global:{fetch:async(input,init={})=>{
+        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+        const cancel=()=>controller.abort();init.signal?.addEventListener('abort',cancel,{once:true});
+        try{return await fetch(input,{...init,signal:controller.signal});}
+        finally{clearTimeout(timer);init.signal?.removeEventListener('abort',cancel);}
+      }}});
+      cloud.client.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>sessionChanged(session),0);});
+      const {data,error}=await cloud.client.auth.getSession();
+      cloud.booting=false;
+      if(error)throw error;
+      await sessionChanged(data.session);
+      if(!cloud.user)status('ログインしていません。現在はこの端末だけに保存します。');
+      controls();
+    }catch(error){cloud.booting=false;status(errorMessage(error));controls();}
+  };
+  document.head.append(sdk);
+})();
 
 </script>
 </body>
