@@ -316,6 +316,22 @@ dialog .note{display:block}
  tbody th{font-size:14px}tbody th small{font-size:10px}
 }
 
+
+/* 土日・祝日 */
+#month-table th.is-saturday,#week-table th.is-saturday{color:#245dcc;background:#edf4ff}
+#month-table th.is-sunday,#week-table th.is-sunday,#week-table th.is-holiday{color:#b32940;background:#fff0f3}
+#month-table td.is-saturday,#week-table td.is-saturday{background:#f5f8ff}
+#month-table td.is-sunday,#month-table td.is-holiday,#week-table td.is-sunday,#week-table td.is-holiday{background:#fff6f7}
+#month-table .is-saturday .day-label{color:#245dcc}
+#month-table .is-sunday .day-label,#month-table .is-holiday .day-label{color:#b32940}
+#month-table .outside-month{filter:saturate(.65)}
+#month-table .outside-month .day-label{opacity:.65}
+.holiday-label{display:block;flex:0 0 12px;height:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px;line-height:12px;color:#b32940;font-weight:bold;padding:0 1px}
+#week-table thead{flex-basis:44px}#week-table thead tr{height:44px}
+#week-table thead .week-holiday{display:block;width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px;line-height:10px;color:#b32940}
+#day-title.is-saturday{color:#245dcc}#day-title.is-sunday,#day-title.is-holiday{color:#b32940}
+#month-title .holiday-unavailable{display:block;font-size:9px;line-height:11px;color:#69758a;font-weight:normal}
+
 </style>
 </head>
 
@@ -637,6 +653,56 @@ dialog .note{display:block}
       </button>
     </div>
   </dialog>
+  <script id="japanese-holiday-data">
+// 内閣府公表の2026・2027年の祝日と休日。2026-11-05確認。
+// https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html
+const JAPANESE_HOLIDAYS=Object.freeze({
+  "2026-01-01": "元日",
+  "2026-01-12": "成人の日",
+  "2026-02-11": "建国記念の日",
+  "2026-02-23": "天皇誕生日",
+  "2026-03-20": "春分の日",
+  "2026-04-29": "昭和の日",
+  "2026-05-03": "憲法記念日",
+  "2026-05-04": "みどりの日",
+  "2026-05-05": "こどもの日",
+  "2026-05-06": "振替休日",
+  "2026-07-20": "海の日",
+  "2026-08-11": "山の日",
+  "2026-09-21": "敬老の日",
+  "2026-09-22": "国民の休日",
+  "2026-09-23": "秋分の日",
+  "2026-10-12": "スポーツの日",
+  "2026-11-03": "文化の日",
+  "2026-11-23": "勤労感謝の日",
+  "2027-01-01": "元日",
+  "2027-01-11": "成人の日",
+  "2027-02-11": "建国記念の日",
+  "2027-02-23": "天皇誕生日",
+  "2027-03-21": "春分の日",
+  "2027-03-22": "振替休日",
+  "2027-04-29": "昭和の日",
+  "2027-05-03": "憲法記念日",
+  "2027-05-04": "みどりの日",
+  "2027-05-05": "こどもの日",
+  "2027-07-19": "海の日",
+  "2027-08-11": "山の日",
+  "2027-09-20": "敬老の日",
+  "2027-09-23": "秋分の日",
+  "2027-10-11": "スポーツの日",
+  "2027-11-03": "文化の日",
+  "2027-11-23": "勤労感謝の日"
+});
+function holidayName(date){return JAPANESE_HOLIDAYS[date]||"";}
+function hasHolidayData(date){return ["2026","2027"].includes(String(date).slice(0,4));}
+function decorateCalendarDate(element,date){
+ const day=parseDate(date).getDay(),name=holidayName(date);
+ element.classList.toggle("is-saturday",day===6);
+ element.classList.toggle("is-sunday",day===0);
+ element.classList.toggle("is-holiday",Boolean(name));
+ element.dataset.date=date;
+}
+</script>
   <script>
     const periods = [
       { name: "1限", start: "09:00", end: "10:30" },
@@ -1615,7 +1681,8 @@ dialog .note{display:block}
     let shownDay=dateText(new Date());
     function renderDay(){
       $("day-date").value=shownDay;
-      $("day-title").textContent=shortDate(shownDay);
+      decorateCalendarDate($("day-title"),shownDay);
+      $("day-title").textContent=shortDate(shownDay)+(holidayName(shownDay)?"・"+holidayName(shownDay):"");
       const list=$("day-list"); list.replaceChildren();
       const items=eventsOn(shownDay).sort((a,b)=>Number(!!b.allDay)-Number(!!a.allDay)||a.start.localeCompare(b.start));
       if(!items.length){const li=document.createElement("li");li.textContent="この日の予定はありません。";list.append(li);}
@@ -1702,14 +1769,17 @@ dialog .note{display:block}
     function goToDay(date){shownDay=date;changeView("day");}
     function compactCell(cell,date,items,kind,periodIndex=null){
       cell.classList.add(kind==="month"?"month-cell":"week-cell");
+      decorateCalendarDate(cell,date);
       const inner=document.createElement("div");inner.className="cell-inner";
       if(kind==="month"){
         const dateButton=document.createElement("button");
         dateButton.type="button";dateButton.className="day-label secondary";
         dateButton.textContent=parseDate(date).getDate();
-        dateButton.setAttribute("aria-label",shortDate(date)+"の予定一覧");
+        dateButton.setAttribute("aria-label",shortDate(date)+(holidayName(date)?" "+holidayName(date):"")+"の予定一覧");
+        dateButton.title=shortDate(date)+(holidayName(date)?" "+holidayName(date):"");
         if(date===dateText(new Date()))dateButton.classList.add("today");
         dateButton.addEventListener("click",()=>goToDay(date));inner.append(dateButton);
+        if(holidayName(date)){const holiday=document.createElement("span");holiday.className="holiday-label";holiday.textContent=holidayName(date);holiday.title=holidayName(date);inner.append(holiday);}
       }
       const holder=document.createElement("div");holder.className="cell-events";
       const cap=kind==="month"?monthCardLimit:1;
@@ -1752,7 +1822,10 @@ dialog .note{display:block}
         th.textContent=weekdays[parseDate(date).getDay()];
         const small=document.createElement("small");small.textContent=parseDate(date).getDate();th.append(small);
         if(date===dateText(new Date()))th.className="today";
-        th.tabIndex=0;th.setAttribute("role","button");th.setAttribute("aria-label",shortDate(date)+"の日別表示");
+        decorateCalendarDate(th,date);
+        if(holidayName(date)){const holiday=document.createElement("span");holiday.className="week-holiday";holiday.textContent=holidayName(date);th.append(holiday);}
+        th.title=shortDate(date)+(holidayName(date)?" "+holidayName(date):"");
+        th.tabIndex=0;th.setAttribute("role","button");th.setAttribute("aria-label",shortDate(date)+(holidayName(date)?" "+holidayName(date):"")+"の日別表示");
         th.addEventListener("click",()=>goToDay(date));
         th.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();goToDay(date);}});
         head.append(th);
@@ -1773,14 +1846,15 @@ dialog .note{display:block}
     renderMonth=function(){
       const y=monthCursor.getFullYear(),m=monthCursor.getMonth();
       $("month-title").textContent=y+"年 "+(m+1)+"月";
+      if(!hasHolidayData(dateText(monthCursor))){const note=document.createElement("small");note.className="holiday-unavailable";note.textContent="この年の祝日データは未登録";$("month-title").append(note);}
       $("jump-month").value=y+"-"+String(m+1).padStart(2,"0");
       const start=mondayOf(dateText(monthCursor)),last=dateText(new Date(y,m+1,0));
       const rowCount=Math.round((parseDate(mondayOf(last))-parseDate(start))/86400000/7)+1;
       const table=$("month-table");table.replaceChildren();table.style.setProperty("--rows",rowCount);
       const available=$("month-panel").clientHeight||500;
-      monthCardLimit=Math.max(1,Math.min(4,Math.floor(((available-108)/rowCount-43)/19)));
+      monthCardLimit=Math.max(0,Math.min(4,Math.floor(((available-108)/rowCount-57)/19)));
       const head=table.createTHead().insertRow();
-      ["月","火","水","木","金","土","日"].forEach(day=>{const th=document.createElement("th");th.scope="col";th.textContent=day;head.append(th);});
+      ["月","火","水","木","金","土","日"].forEach((day,index)=>{const th=document.createElement("th");th.scope="col";th.textContent=day;if(index===5)th.classList.add("is-saturday");if(index===6)th.classList.add("is-sunday");head.append(th);});
       const body=table.createTBody();
       for(let w=0;w<rowCount;w++){
         const tr=body.insertRow();
@@ -1799,6 +1873,8 @@ dialog .note{display:block}
     const backupButton=document.createElement("button");
     backupButton.type="button";backupButton.textContent="予定をバックアップ";backupButton.className="secondary";
     settingsDialog.append(backupButton);
+    const holidayInfo=document.createElement("p");holidayInfo.className="note";holidayInfo.textContent="土曜は青、日曜と祝日は赤で表示します。祝日データは2026〜2027年分です（振替休日・国民の休日を含む）。";
+    const holidaySource=document.createElement("a");holidaySource.href="https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html";holidaySource.textContent=" 内閣府の祝日一覧";holidaySource.target="_blank";holidaySource.rel="noopener noreferrer";holidayInfo.append(holidaySource);settingsDialog.append(holidayInfo);
     backupButton.addEventListener("click",()=>{
       if(!storageReadable){alert("予定を読み込めていないため書き出せません。");return;}
       const file=new Blob([JSON.stringify({version:1,events,morning:(window.scheduleCloudMorning || localStorage.getItem(morningStorageKey))},null,2)],{type:"application/json"});
