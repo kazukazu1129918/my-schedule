@@ -1844,7 +1844,7 @@ dialog .note{display:block}
         <div class="actions"><button id="cloud-import" type="button">この端末の予定を引き継ぐ</button><button id="cloud-empty" class="secondary" type="button">空の予定表で始める</button></div>
       </div>
     </div>
-    <p class="note">通知はまだ配信されません。通知設定は保存できます。</p>`;
+    <p class="note">予定の自動通知は準備中です。通知設定は保存できます。</p>`;
   settingsDialog.insertBefore(panel, $('morning-enabled').closest('section'));
   const badge = document.createElement('small');
   badge.style.cssText = 'display:block;font-size:10px;line-height:1.2;color:#526078';
@@ -1860,6 +1860,7 @@ dialog .note{display:block}
       $(id).disabled = cloud.busy || cloud.booting || !cloud.client;
     });
     badge.textContent = cloud.user ? (cloud.ready ? 'クラウド保存' : 'クラウド確認中') : 'この端末に保存';
+    window.dispatchEvent(new Event('schedule-cloud-state'));
   }
   function morningValue() {
     return { enabled: $('morning-enabled').value === 'on', time: $('morning-time').value || '07:30',
@@ -1978,6 +1979,7 @@ dialog .note{display:block}
   async function sessionChanged(session) {
     const user = session?.user || null;
     if (user?.id === cloud.user?.id) return;
+    if(cloud.user && cloud.user.id!==user?.id) await stopDevicePush(false);
     cloud.epoch++; cloud.busy=false;cloud.ready=false;cloud.revision=null;
     if (!cloud.user) { localEvents=copyEvents(); localMorning=morningValue(); }
     cloud.user=user;
@@ -2011,10 +2013,143 @@ dialog .note{display:block}
   $('cloud-empty').addEventListener('click',()=>startCloud(false));
   $('cloud-refresh').addEventListener('click',()=>loadCloud());
   $('cloud-logout').addEventListener('click',async()=>{
-    if(cloud.busy)return;
+    if(cloud.busy||push.busy)return;
+    await stopDevicePush();
     const {error}=await cloud.client.auth.signOut({scope:'local'});
     if(error)status(errorMessage(error));
   });
+    // この端末の通知登録。通知許可はボタンを押したときだけ求める。
+  const VAPID_PUBLIC_KEY = 'BN1appSpt4NKuxxbxUA6YPCaueXb0-39j0ZRa1t_NsItmQXCoI-8y0TjWGx5DHKfgXf1IsidgGj1G05zoW3rfUk';
+  const push = { registration: null, id: null, userId: null, busy: false, sessionKey: '',
+    message: '通知機能を準備中…', supported: false };
+  const pushOwnerKey = 'kazu-push-owner-v1';
+  const pushPanel = document.createElement('section');
+  pushPanel.className = 'panel';
+  pushPanel.innerHTML = `<h2>この端末の通知</h2>
+    <p id="push-status" class="note" role="status"></p>
+    <div class="actions"><button id="enable-push" type="button">この端末の通知を許可</button>
+    <button id="test-push" type="button" class="secondary">テスト通知を送る</button>
+    <button id="disable-push" type="button" class="secondary">この端末の通知を停止</button></div>
+    <p class="note">iPhoneではホーム画面に追加した予定表から操作してください。通知の許可だけでは、予定ごとの通知はオンになりません。</p>
+    <p class="note">現在はテスト通知を送れます。予定の事前通知と朝のまとめの自動配信は、次の手順で設定します。</p>`;
+  settingsDialog.insertBefore(pushPanel, $('morning-enabled').closest('section'));
+  function pushMessage(message) { push.message = message; drawPush(); }
+  function drawPush() {
+    let message = push.message;
+    if (push.supported && !cloud.user) message = '先に予定表へログインしてください。通知は端末ごとに許可します。';
+    $('push-status').textContent = message;
+    const ready = push.supported && push.registration && cloud.user && cloud.ready && !cloud.busy && !push.busy;
+    $('enable-push').disabled = !ready;
+    $('test-push').disabled = !ready || !push.id || push.userId !== cloud.user?.id;
+    $('disable-push').disabled = !push.registration || push.busy || cloud.busy;
+  }
+  function readPushOwner() { try { return localStorage.getItem(pushOwnerKey); } catch { return null; } }
+  function savePushOwner(id) { try { if(id)localStorage.setItem(pushOwnerKey,id);else localStorage.removeItem(pushOwnerKey); } catch {} }
+  function vapidBytes() {
+    const value=VAPID_PUBLIC_KEY.replace(/-/g,'+').replace(/_/g,'/');
+    return Uint8Array.from(atob(value+'='.repeat((4-value.length%4)%4)),c=>c.charCodeAt(0));
+  }
+  async function inspectPush() {
+    const uid=cloud.user?.id;
+    if(!push.registration || !uid || !cloud.ready || push.busy)return;
+    push.busy=true;drawPush();
+    try {
+      const sub=await push.registration.pushManager.getSubscription();
+      if(!sub){push.id=null;pushMessage('通知は未登録です。「この端末の通知を許可」を押してください。');return;}
+      const {data,error}=await cloud.client.from('push_subscriptions').select('id').eq('endpoint',sub.endpoint).eq('user_id',uid).maybeSingle();
+      if(cloud.user?.id!==uid)return;
+      if(error)throw error;
+      push.id=data?.id||null;push.userId=uid;
+      if(data){savePushOwner(uid);pushMessage('この端末の通知先を登録済みです。テスト通知で確認できます。');}
+      else pushMessage('通知先を保存するため、「この端末の通知を許可」を押してください。');
+    }catch{pushMessage('通知の登録状況を確認できませんでした。通信を確認し、設定画面を開き直してください。');}
+    finally{push.busy=false;drawPush();}
+  }
+  $('enable-push').addEventListener('click',async()=>{
+    if(!push.registration||!cloud.user||!cloud.ready||cloud.busy||push.busy)return;
+    const uid=cloud.user.id;
+    // iPhoneの操作直後という条件を保つため、最初のawaitより前に呼び出す。
+    const permissionPromise=Notification.permission==='granted'?Promise.resolve('granted'):Notification.requestPermission();
+    push.busy=true;drawPush();
+    try{
+      const permission=await permissionPromise;
+      if(permission!=='granted'){pushMessage('通知が許可されませんでした。iPhoneの設定で、この予定表の通知を確認してください。');return;}
+      let sub=await push.registration.pushManager.getSubscription();
+      if(sub&&readPushOwner()!==uid){await sub.unsubscribe();sub=null;}
+      if(!sub)sub=await push.registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapidBytes()});
+      if(cloud.user?.id!==uid){await sub.unsubscribe();return;}
+      const {data,error}=await cloud.client.from('push_subscriptions').upsert({user_id:uid,endpoint:sub.endpoint,subscription:sub.toJSON()},
+        {onConflict:'endpoint'}).select('id').single();
+      if(cloud.user?.id!==uid){await sub.unsubscribe();return;}
+      if(error)throw error;
+      push.id=data.id;push.userId=uid;savePushOwner(uid);
+      pushMessage('通知先を登録しました。「テスト通知を送る」を押してください。');
+    }catch(error){pushMessage('通知を登録できませんでした：'+String(error?.message||error));}
+    finally{push.busy=false;drawPush();}
+  });
+  async function stopDevicePush(removeRow=true) {
+    if(!push.registration)return;
+    push.busy=true;drawPush();
+    try{
+      const sub=await push.registration.pushManager.getSubscription();
+      if(sub){
+        // ブラウザー側の購読を先に止める。DBへの通信が失敗しても端末には届かなくなる。
+        await sub.unsubscribe();
+        if(removeRow&&cloud.user){
+          const {error}=await cloud.client.from('push_subscriptions').delete().eq('endpoint',sub.endpoint).eq('user_id',cloud.user.id);
+          if(error)throw error;
+        }
+      }
+      pushMessage('この端末の通知を停止しました。');
+    }catch{pushMessage('通知の停止処理を完了できませんでした。通信を確認し、もう一度停止してください。');}
+    finally{push.id=null;push.userId=null;savePushOwner(null);push.busy=false;drawPush();}
+  }
+  $('disable-push').addEventListener('click',()=>stopDevicePush());
+  $('test-push').addEventListener('click',async()=>{
+    if(!push.id||push.userId!==cloud.user?.id||push.busy||cloud.busy)return;
+    const uid=cloud.user.id,id=push.id;push.busy=true;drawPush();
+    try{
+      const {data:sessionData,error:sessionError}=await cloud.client.auth.getSession();
+      if(sessionError||!sessionData.session?.access_token||sessionData.session.user.id!==uid)throw new Error('ログインし直してください。');
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+      let response;
+      try{response=await fetch(PROJECT_URL+'/functions/v1/push-test',{method:'POST',headers:{
+        apikey:PUBLIC_KEY,Authorization:'Bearer '+sessionData.session.access_token,'Content-Type':'application/json'},
+        body:JSON.stringify({subscriptionId:id}),signal:controller.signal});}
+      finally{clearTimeout(timer);}
+      const result=await response.json().catch(()=>({}));
+      if(response.status===401)throw new Error('ログインし直して再度試してください。繰り返し失敗する場合は、Supabaseのpush-testのJWT設定を確認してください。');
+      if(response.status===410){push.id=null;throw new Error('通知先が失効しています。通知を停止し、もう一度許可してください。');}
+      if(!response.ok||!result.ok)throw new Error(result.error||'送信処理に接続できませんでした（'+response.status+'）。');
+      if(cloud.user?.id===uid)pushMessage('通知サービスへ送信しました。iPhoneの通知を確認してください。');
+    }catch(error){pushMessage('テスト通知を送れませんでした：'+String(error?.message||error));}
+    finally{push.busy=false;drawPush();}
+  });
+  window.addEventListener('schedule-cloud-state',()=>{
+    const key=(cloud.user?.id||'')+':'+cloud.ready;
+    if(key!==push.sessionKey){push.sessionKey=key;push.id=null;push.userId=null;if(cloud.user&&cloud.ready)void inspectPush();}
+    drawPush();
+  });
+  settingsButton.addEventListener('click',()=>inspectPush());
+  const ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+  if(ios&&!standalone){pushMessage('iPhoneのホーム画面に追加した「予定表」を開いてください。Safariの画面では通知を登録できません。');}
+  else if(!window.isSecureContext||!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window)){
+    pushMessage('この環境ではプッシュ通知を利用できません。iPhoneではホーム画面の予定表から開いてください。');
+  }else{
+    push.supported=true;
+    const scope=new URL('./',location.href);
+    navigator.serviceWorker.register(new URL('sw.js',scope).href,{scope:scope.href,updateViaCache:'none'})
+      .then(async registration=>{
+        const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('準備が完了しませんでした。')),15000));
+        await Promise.race([navigator.serviceWorker.ready,timeout]);
+        push.registration=registration;
+        pushMessage('通知は未登録です。「この端末の通知を許可」を押してください。');
+        await inspectPush();
+      }).catch(()=>{push.supported=false;pushMessage('通知用ファイルを読み込めません。GitHubにsw.jsもアップロードしたか確認し、開き直してください。');});
+  }
+  drawPush();
+
   controls();
   const sdk=document.createElement('script');
   sdk.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
