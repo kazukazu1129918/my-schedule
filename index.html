@@ -1787,7 +1787,9 @@ dialog .note{display:block}
         for(let d=0;d<7;d++){
           const date=addDays(start,w*7+d),cell=tr.insertCell();
           if(parseDate(date).getMonth()!==m)cell.classList.add("outside-month");
-          const items=eventsOn(date).sort((a,b)=>Number(!!b.allDay)-Number(!!a.allDay)||a.start.localeCompare(b.start));
+          const items=eventsOn(date)
+            .filter(event=>event.category!=="class")
+            .sort((a,b)=>Number(!!b.allDay)-Number(!!a.allDay)||a.start.localeCompare(b.start));
           compactCell(cell,date,items,"month");
         }
       }
