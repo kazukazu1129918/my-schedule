@@ -1968,7 +1968,7 @@ function decorateCalendarDate(element,date){
           const date=addDays(start,w*7+d),cell=tr.insertCell();
           if(parseDate(date).getMonth()!==m)cell.classList.add("outside-month");
           const items=eventsOn(date)
-            .filter(event=>event.category!=="class")
+            .filter(event=>!categorySettings[event.category]?.hideInMonth)
             .sort((a,b)=>Number(!!b.allDay)-Number(!!a.allDay)||a.start.localeCompare(b.start));
           compactCell(cell,date,items,"month");
         }
@@ -1993,6 +1993,81 @@ function decorateCalendarDate(element,date){
     changeView("week");
 
 </script>
+<script id="schedule-preferences-core">
+(() => {
+  const LOCAL_KEY = 'kazu-timetable-preferences-v1';
+  const colors = ['blue','green','orange','pink','purple','gray'];
+  const defaults = {
+    periods: periods.map((p,i)=>({...p,weight:i===2?0.45:i>=6?2/3:1})),
+    categories: Object.entries(categorySettings).map(([id,c])=>({id,...c,hideInMonth:id==='class'}))
+  };
+  const clone = data => JSON.parse(JSON.stringify(data));
+  function validate(value) {
+    if (!value || !Array.isArray(value.periods) || value.periods.length<1 || value.periods.length>16)
+      throw Error('コマ数は1〜16個にしてください。');
+    const time = /^([01]\d|2[0-3]):[0-5]\d$/;
+    let previousEnd = '';
+    const nextPeriods = value.periods.map((p,i)=>{
+      const name=String(p.name||'').trim(), weight=Number(p.weight);
+      if(!name || name.length>20)throw Error((i+1)+'番目のコマ名は1〜20文字で入力してください。');
+      if(!time.test(p.start)||!time.test(p.end)||p.start>=p.end)throw Error(name+'の終了は開始より後の時刻にしてください。');
+      if(previousEnd && p.start<previousEnd)throw Error(name+'の時刻が前のコマと重なっています。上から時刻順に設定してください。');
+      previousEnd=p.end;
+      if(![0.45,2/3,1].includes(weight))throw Error('コマの高さを選んでください。');
+      return {name,start:p.start,end:p.end,weight};
+    });
+    if(!Array.isArray(value.categories)||value.categories.length<1||value.categories.length>24)throw Error('分類は1〜24個にしてください。');
+    const ids=new Set(), names=new Set();
+    const categories=value.categories.map(c=>{
+      const name=String(c.name||'').trim();
+      if(typeof c.id!=='string'||!/^([a-z][a-z0-9_-]{0,79})$/.test(c.id)||ids.has(c.id))throw Error('分類の識別情報を確認できません。');
+      if(!name||name.length>30||names.has(name))throw Error('分類名は重複しない1〜30文字にしてください。');
+      if(!colors.includes(c.color))throw Error('分類の色を選んでください。');
+      ids.add(c.id);names.add(name);
+      return {id:c.id,name,color:c.color,hideInMonth:!!c.hideInMonth};
+    });
+    if(!ids.has('other'))throw Error('「その他」は残してください。');
+    return {periods:nextPeriods,categories};
+  }
+  function snapshot() {
+    return {periods:clone(periods),categories:Object.entries(categorySettings).map(([id,c])=>({id,...c}))};
+  }
+  function apply(value) {
+    let next;
+    try {next=validate(value||defaults);} catch {next=clone(defaults);}
+    periods.splice(0,periods.length,...next.periods);
+    for(const key of Object.keys(categorySettings))delete categorySettings[key];
+    for(const c of next.categories){const {id,...setting}=c;categorySettings[id]=setting;}
+    const startValue=periodSelect.value, endSelect=$('event-end-period'), endValue=endSelect?.value;
+    periodSelect.replaceChildren();
+    endSelect?.replaceChildren();
+    periods.forEach((p,i)=>{
+      periodSelect.add(new Option(p.name+'（'+p.start+'〜'+p.end+'）',String(i)));
+      endSelect?.add(new Option(p.name+'（〜'+p.end+'）',String(i)));
+    });
+    periodSelect.value=Number(startValue)<periods.length?startValue:'0';
+    if(endSelect)endSelect.value=Number(endValue)<periods.length?endValue:periodSelect.value;
+    const select=$('event-category'), category=select.value;
+    select.replaceChildren();
+    next.categories.forEach(c=>select.add(new Option(c.name,c.id)));
+    select.value=categorySettings[category]?category:'other';
+    window.dispatchEvent(new Event('schedule-preferences-change'));
+    if(typeof render==='function')render();
+  }
+  let localValue=null, localReadable=true;
+  try {const saved=localStorage.getItem(LOCAL_KEY);if(saved)localValue=validate(JSON.parse(saved));}
+  catch {localReadable=false;}
+  window.schedulePreferences={
+    colors,defaults:clone(defaults),validate,snapshot,apply,
+    readLocal:()=>clone(localValue||defaults),
+    saveLocal(value){
+      if(!localReadable)throw Error('保存済みのコマ設定を読み込めないため、上書きを停止しています。');
+      const next=validate(value);localStorage.setItem(LOCAL_KEY,JSON.stringify(next));localValue=next;return next;
+    }
+  };
+  apply(localValue);
+})();
+</script>
 <script>
 // Supabaseの公開用キー。秘密キーはここに置かない。
 (() => {
@@ -2005,6 +2080,7 @@ function decorateCalendarDate(element,date){
   let localEvents = copyEvents();
   let localMorning = { enabled: $('morning-enabled').value === 'on',
     time: $('morning-time').value || '07:30', timezone: 'Asia/Tokyo', notifyWhenEmpty: true };
+  let localPreferences = window.schedulePreferences.readLocal();
   const panel = document.createElement('section');
   panel.className = 'panel';
   const style = document.createElement('style');
@@ -2069,6 +2145,7 @@ function decorateCalendarDate(element,date){
       const next = checkedEvents(data.events);
       events = next; cloud.offlineView = true;
       snapshotDate = data.savedAt; snapshotAccount = data.email || '';
+      window.schedulePreferences.apply(data.settings?.preferences);
       showMorning(data.settings?.morning); render(); offlineInfo();
       return true;
     } catch { return false; }
@@ -2157,6 +2234,7 @@ function decorateCalendarDate(element,date){
     cloud.settings = row.settings && typeof row.settings === 'object' && !Array.isArray(row.settings) ? row.settings : {};
     cloud.ready = true;
     showMorning(cloud.settings.morning);
+    window.schedulePreferences.apply(cloud.settings.preferences);
     cacheConfirmedRow(row);
     render(); controls(); status('クラウドの予定を読み込みました。変更するとクラウドへ保存します。');
   }
@@ -2183,7 +2261,7 @@ function decorateCalendarDate(element,date){
     cloud.busy = true; controls();
     try {
       const { data, error } = await cloud.client.from('schedule_data').insert({ user_id: uid,
-        events: importLocal ? localEvents : [], settings: { morning: importLocal ? localMorning : {enabled:false,time:'07:30',timezone:'Asia/Tokyo',notifyWhenEmpty:true} }, revision: 0 }).select('*').single();
+        events: importLocal ? localEvents : [], settings: { preferences: importLocal ? localPreferences : window.schedulePreferences.defaults, morning: importLocal ? localMorning : {enabled:false,time:'07:30',timezone:'Asia/Tokyo',notifyWhenEmpty:true} }, revision: 0 }).select('*').single();
       if (epoch !== cloud.epoch) return;
       if (error) throw error;
       adopt(data);
@@ -2206,7 +2284,7 @@ function decorateCalendarDate(element,date){
         cloud.ready = false;
         throw new Error('別の端末で予定が更新されています。変更内容を控え、編集をキャンセルして、設定の「最新の予定を読み込む」を押してください。今回の変更は保存していません。');
       }
-      events = checkedEvents(data.events); cloud.revision = data.revision; cloud.settings = data.settings; cloud.offlineView = false; cacheConfirmedRow(data);
+      events = checkedEvents(data.events); cloud.revision = data.revision; cloud.settings = data.settings; cloud.offlineView = false; window.schedulePreferences.apply(cloud.settings.preferences); cacheConfirmedRow(data);
       window.scheduleCloudMorning = JSON.stringify(cloud.settings.morning || null);
       status('クラウドへ保存しました。'); return true;
     } catch (error) { if(epoch === cloud.epoch) {status(errorMessage(error)); alert(errorMessage(error));} return false; }
@@ -2245,13 +2323,15 @@ function decorateCalendarDate(element,date){
     const previousUid = cloud.user?.id;
     if(cloud.user && cloud.user.id!==user?.id) await stopDevicePush(false);
     cloud.epoch++; cloud.busy=false;cloud.ready=false;cloud.revision=null;
-    if (!cloud.user && !cloud.offlineView) { localEvents=copyEvents(); localMorning=morningValue(); }
+    if (!cloud.user && !cloud.offlineView) { localEvents=copyEvents(); localMorning=morningValue(); localPreferences=window.schedulePreferences.snapshot(); }
     if (previousUid && previousUid !== user?.id) forgetSnapshot(previousUid);
     if (!user) forgetSnapshot(previousUid);
     cloud.user=user;
+    window.schedulePreferences.apply(user ? null : localPreferences);
     cloud.offlineView=false;
     events=localEvents.map(e=>({...e,exceptions:[...e.exceptions]}));
     if(user) restoreSnapshot(user.id);
+    window.dispatchEvent(new Event('schedule-preferences-account'));
     ['event-dialog','scope-dialog'].forEach(id=>{if($(id).open)$(id).close();});
     pendingAction=null;editing=null;
     $('cloud-password').value='';
@@ -2287,6 +2367,16 @@ function decorateCalendarDate(element,date){
     const {error}=await cloud.client.auth.signOut({scope:'local'});
     if(error)status(errorMessage(error));
   });
+  window.schedulePreferences.save = async function(value, deleted = []) {
+    if(cloud.booting || readOnlyOffline()) {alert('設定の変更には通信とログイン状態の確認が必要です。');return false;}
+    const next=window.schedulePreferences.validate(value);
+    const nextEvents=copyEvents().map(e=>deleted.includes(e.category)?{...e,category:'other'}:e);
+    if(cloud.user) return commit(nextEvents,{...cloud.settings,preferences:next});
+    const previous=window.schedulePreferences.readLocal();
+    window.schedulePreferences.saveLocal(next);
+    if(!localSave(nextEvents)) {window.schedulePreferences.saveLocal(previous);return false;}
+    localEvents=copyEvents();localPreferences=next;window.schedulePreferences.apply(next);return true;
+  };
     // この端末の通知登録。通知許可はボタンを押したときだけ求める。
   const VAPID_PUBLIC_KEY = 'BN1appSpt4NKuxxbxUA6YPCaueXb0-39j0ZRa1t_NsItmQXCoI-8y0TjWGx5DHKfgXf1IsidgGj1G05zoW3rfUk';
   const push = { registration: null, id: null, userId: null, busy: false, sessionKey: '',
@@ -2723,16 +2813,16 @@ function decorateCalendarDate(element,date){
   });
   syncEndPeriod();
 
-  const weights = [1, 1, 0.45, 1, 1, 1, 2 / 3, 2 / 3];
+  let weights = [];
   const allDayWeight = 0.55;
-  const totalWeight = allDayWeight + weights.reduce((sum, value) => sum + value, 0);
+  let totalWeight;
   function minutes(text) {
     if (typeof text !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(text)) return NaN;
     const [hour, minute] = text.split(':').map(Number);
     return hour * 60 + minute;
   }
-  const dayStart = minutes(periods[0].start);
-  const dayEnd = minutes(periods[periods.length - 1].end);
+  let dayStart;
+  let dayEnd;
   function timePosition(value) {
     if (value <= dayStart) return allDayWeight / totalWeight;
     if (value >= dayEnd) return 1;
@@ -2807,7 +2897,7 @@ function decorateCalendarDate(element,date){
     if (startsOnPeriod && endsOnPeriod && !item.early && !item.late) time.hidden = true;
     button.replaceChildren(title, time);
     button.title = shortDate(date) + ' ' + item.event.title + ' ' + item.event.start + '〜' + item.event.end +
-      (item.early ? '（早朝の予定を含む）' : '') + (item.late ? '（21時以降の予定を含む）' : '');
+      (item.early ? '（最初のコマより前の予定を含む）' : '') + (item.late ? '（最後のコマより後の予定を含む）' : '');
     button.setAttribute('aria-label', button.title + ' 編集');
     column.append(button);
   }
@@ -2840,12 +2930,16 @@ function decorateCalendarDate(element,date){
   }
 
   drawCompactWeek = function() {
+    weights=periods.map(p=>p.weight||1);totalWeight=allDayWeight+weights.reduce((a,b)=>a+b,0);
+    dayStart=minutes(periods[0].start);dayEnd=minutes(periods[periods.length-1].end);
     const days = Array.from({ length: 5 }, (_, index) => addDays(shownMonday, index));
     $('week-title').textContent = shortDate(days[0]) + '〜' + shortDate(days[4]);
     $('week-title').title = '週間表示は月曜〜金曜。土日の予定は日別・月間で確認できます。';
     const table = $('week-table');
     table.replaceChildren();
     table.classList.add('time-layout');
+    table.classList.toggle('many-periods',periods.length>8);
+    table.style.setProperty('--expanded-week-height',(periods.length*60+86)+'px');
     table.style.setProperty('--week-row-weights', [allDayWeight, ...weights].map(w => 'minmax(0,' + w + 'fr)').join(' '));
     const head = table.createTHead().insertRow();
     const corner = document.createElement('th');
@@ -2947,11 +3041,123 @@ function decorateCalendarDate(element,date){
   };
   const help = document.createElement('p');
   help.className = 'note';
-  help.textContent = '週間は月〜金の表示です。空いたコマを押すと追加、予定を押すと編集できます。↑は9時前、↓は21時以降の予定を含む印です。土日の予定と通知も引き続き使えます。';
+  help.textContent = '週間は月〜金の表示です。空いたコマを押すと追加、予定を押すと編集できます。↑は最初のコマより前、↓は最後のコマより後の予定を含む印です。土日の予定と通知も引き続き使えます。';
   settingsDialog.append(help);
   render();
 })();
 
+</script>
+<script id="schedule-preferences-ui">
+(() => {
+  const api=window.schedulePreferences;
+  const section=document.createElement('section');
+  section.className='panel preferences-panel';
+  section.innerHTML=`
+    <h2>コマ・分類の設定</h2>
+    <p class="note">コマを変更しても、登録済みの予定の開始・終了時刻は変わりません。分類を削除した予定は「その他」へ移ります。</p>
+    <form id="preferences-form">
+      <details id="period-preferences"><summary>週間のコマ・時刻</summary>
+        <p class="note">上から時刻順に設定してください。1〜16コマまで。コマが多い場合は週間表を上下にスクロールできます。</p>
+        <div id="preference-periods"></div><button id="preference-add-period" class="secondary" type="button">＋ コマを追加</button>
+      </details>
+      <details id="category-preferences"><summary>予定の分類</summary>
+        <p class="note">「月間に表示しない」にチェックした分類は月間表から隠します。日別・週間・通知には含まれます。「その他」は削除できません。</p>
+        <div id="preference-categories"></div><button id="preference-add-category" class="secondary" type="button">＋ 分類を追加</button>
+      </details>
+      <p><button id="preference-save" type="submit">コマ・分類の設定を保存</button></p>
+      <p id="preference-status" class="note" role="status"></p>
+    </form>`;
+  settingsDialog.append(section);
+  const style=document.createElement('style');
+  style.textContent=`
+    #settings-dialog .preferences-panel{padding:0;border-top:1px solid #dce3ee;padding-top:16px}
+    .preferences-panel details{margin:14px 0;padding:10px;border:1px solid #dce3ee;border-radius:10px}
+    .preferences-panel summary{font-weight:bold;cursor:pointer}
+    .preference-row{margin:12px 0;padding:10px;background:#f3f6fb;border-radius:10px;min-width:0}
+    .preference-row .preference-times{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:0}
+    .preference-row label{display:block;min-width:0;font-size:14px;margin:6px 0}
+    .preference-row input,.preference-row select{width:100%;min-width:0;max-width:100%;font-size:16px}
+    .preference-row .preference-check{display:flex;gap:8px;align-items:center}
+    .preference-row input[type=checkbox]{width:20px;height:20px;flex:0 0 20px;margin:0}
+    .preference-row button{margin-top:8px;padding:8px 12px;font-size:14px}
+    #week-panel .scroll{overflow-y:auto}
+    #week-table.many-periods{height:var(--expanded-week-height);min-height:var(--expanded-week-height)}
+  `;
+  document.head.append(style);
+  let dirty=false, serial=0, saving=false;
+  function inputLabel(row,text,input){
+    const label=document.createElement('label');
+    const id='preference-field-'+(++serial);input.id=id;label.htmlFor=id;label.append(document.createTextNode(text),input);row.append(label);return input;
+  }
+  function field(type,value){const input=document.createElement('input');input.type=type;input.value=value;input.required=true;return input;}
+  function removeButton(row,text){
+    const button=document.createElement('button');button.type='button';button.className='danger';button.textContent=text;
+    button.addEventListener('click',()=>{row.remove();dirty=true;});row.append(button);
+  }
+  function periodRow(p){
+    const row=document.createElement('div');row.className='preference-row';row.dataset.kind='period';
+    const name=field('text',p.name);name.dataset.field='name';name.maxLength=20;inputLabel(row,'コマ名',name);
+    const times=document.createElement('div');times.className='preference-times';
+    for(const [key,label] of [['start','開始'],['end','終了']]){
+      const input=field('time',p[key]);input.dataset.field=key;inputLabel(times,label,input);
+    }
+    row.append(times);
+    const select=document.createElement('select');select.dataset.field='weight';
+    for(const [v,label] of [[1,'通常'],[2/3,'小さめ（⅔）'],[0.45,'コンパクト（昼休みなど）']])select.add(new Option(label,String(v)));
+    select.value=String(p.weight);inputLabel(row,'コマの高さ',select);removeButton(row,'このコマを削除');
+    $('preference-periods').append(row);
+  }
+  function categoryRow(c){
+    const row=document.createElement('div');row.className='preference-row';row.dataset.kind='category';row.dataset.categoryId=c.id;
+    const name=field('text',c.name);name.dataset.field='name';name.maxLength=30;
+    if(c.id==='other')name.readOnly=true;
+    inputLabel(row,'分類名',name);
+    const select=document.createElement('select');select.dataset.field='color';
+    const labels={blue:'青',green:'緑',orange:'オレンジ',pink:'ピンク',purple:'紫',gray:'グレー'};
+    api.colors.forEach(color=>select.add(new Option(labels[color],color)));select.value=c.color;inputLabel(row,'追加するときの色',select);
+    const checkbox=field('checkbox','');checkbox.required=false;checkbox.checked=c.hideInMonth;checkbox.dataset.field='hideInMonth';
+    const label=inputLabel(row,'月間に表示しない',checkbox);label.parentElement.classList.add('preference-check');
+    if(c.id!=='other')removeButton(row,'この分類を削除');
+    $('preference-categories').append(row);
+  }
+  function fill(){
+    const value=api.snapshot();$('preference-periods').replaceChildren();$('preference-categories').replaceChildren();
+    value.periods.forEach(periodRow);value.categories.forEach(categoryRow);dirty=false;
+  }
+  function collect(){
+    const value=row=>name=>row.querySelector('[data-field="'+name+'"]');
+    return api.validate({
+      periods:[...$('preference-periods').children].map(row=>{const f=value(row);return {name:f('name').value,start:f('start').value,end:f('end').value,weight:Number(f('weight').value)};}),
+      categories:[...$('preference-categories').children].map(row=>{const f=value(row);return {id:row.dataset.categoryId,name:f('name').value,color:f('color').value,hideInMonth:f('hideInMonth').checked};})
+    });
+  }
+  $('preferences-form').addEventListener('input',()=>dirty=true);
+  $('preferences-form').addEventListener('change',()=>dirty=true);
+  $('preference-add-period').addEventListener('click',()=>{
+    if($('preference-periods').children.length>=16){$('preference-status').textContent='コマは16個まで追加できます。';return;}
+    periodRow({name:($('preference-periods').children.length+1)+'限',start:'',end:'',weight:1});dirty=true;
+  });
+  $('preference-add-category').addEventListener('click',()=>{
+    if($('preference-categories').children.length>=24){$('preference-status').textContent='分類は24個まで追加できます。';return;}
+    categoryRow({id:'custom_'+makeId().replace(/[^a-z0-9]/gi,'').toLowerCase(),name:'',color:'blue',hideInMonth:false});dirty=true;
+  });
+  $('preferences-form').addEventListener('submit',async event=>{
+    event.preventDefault();if(saving)return;
+    try{
+      const next=collect(), deleted=Object.keys(categorySettings).filter(id=>!next.categories.some(c=>c.id===id));
+      const affected=events.filter(e=>deleted.includes(e.category)).length;
+      if(affected && !confirm('削除する分類を使っている予定が'+affected+'件あります。予定を残して、分類を「その他」に変更しますか？'))return;
+      saving=true;$('preference-save').disabled=true;$('preference-status').textContent='保存中…';
+      if(await api.save(next,deleted)){$('preference-status').textContent='コマ・分類の設定を保存しました。';dirty=false;fill();}
+      else $('preference-status').textContent='保存できませんでした。入力内容は残しています。';
+    }catch(error){$('preference-status').textContent=error.message||'保存できませんでした。';}
+    finally{saving=false;$('preference-save').disabled=false;}
+  });
+  settingsButton.addEventListener('click',()=>{if(!dirty&&!saving)fill();});
+  window.addEventListener('schedule-preferences-change',()=>{if(!dirty&&!saving)fill();});
+  window.addEventListener('schedule-preferences-account',()=>{dirty=false;fill();$('preference-status').textContent='';});
+  fill();
+})();
 </script>
 </body>
 </html>
