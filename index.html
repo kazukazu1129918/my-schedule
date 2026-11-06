@@ -2000,7 +2000,7 @@ function decorateCalendarDate(element,date){
   const PUBLIC_KEY = 'sb_publishable_CiSVKJdyrmSzft2YurMrGg_bt4CrvJB';
   const HOME_URL = 'https://kazukazu1129918.github.io/my-schedule/';
   const cloud = { client: null, user: null, ready: false, revision: null,
-    busy: false, booting: true, epoch: 0, settings: {} };
+    busy: false, booting: true, epoch: 0, settings: {}, offlineView: false };
   const localSave = saveEvents;
   let localEvents = copyEvents();
   let localMorning = { enabled: $('morning-enabled').value === 'on',
@@ -2028,22 +2028,97 @@ function decorateCalendarDate(element,date){
         <div class="actions"><button id="cloud-import" type="button">この端末の予定を引き継ぐ</button><button id="cloud-empty" class="secondary" type="button">空の予定表で始める</button></div>
       </div>
     </div>
-    <p class="note">予定の自動通知は準備中です。通知設定は保存できます。</p>`;
+    <p class="note">通知を許可した端末には、設定した時刻に予定をお知らせします。</p>`;
   settingsDialog.insertBefore(panel, $('morning-enabled').closest('section'));
   const badge = document.createElement('small');
   badge.style.cssText = 'display:block;font-size:10px;line-height:1.2;color:#526078';
   document.querySelector('.topbar h1')?.append(badge);
 
+  
+  // クラウドと区別して、アカウントごとの最後に確認できた予定を本体へ保存。
+  const SNAPSHOT_PREFIX = 'kazu-offline-cloud-v1:';
+  const ACTIVE_SNAPSHOT = 'kazu-offline-active-v1';
+  let snapshotDate = '';
+  let snapshotAccount = '';
+  let snapshotFailed = false;
+  const offlineNote = document.createElement('p');
+  offlineNote.id = 'offline-status';
+  offlineNote.className = 'note';
+  panel.append(offlineNote);
+  function snapshotKey(uid) { return SNAPSHOT_PREFIX + uid; }
+  function cacheConfirmedRow(row) {
+    if (!cloud.user) return;
+    try {
+      const savedAt = new Date().toISOString();
+      localStorage.setItem(snapshotKey(cloud.user.id), JSON.stringify({
+        version: 1, userId: cloud.user.id, email: cloud.user.email || '',
+        savedAt, events: checkedEvents(row.events), settings: row.settings || {}, revision: row.revision
+      }));
+      localStorage.setItem(ACTIVE_SNAPSHOT, cloud.user.id);
+      snapshotDate = savedAt; snapshotAccount = cloud.user.email || ''; snapshotFailed = false;
+    } catch { snapshotFailed = true; }
+    offlineInfo();
+  }
+  function restoreSnapshot(uid = null) {
+    try {
+      const owner = uid || localStorage.getItem(ACTIVE_SNAPSHOT);
+      if (!owner) return false;
+      const data = JSON.parse(localStorage.getItem(snapshotKey(owner)) || 'null');
+      if (!data || data.version !== 1 || data.userId !== owner ||
+          !Number.isSafeInteger(data.revision) || data.revision < 0 || !Number.isFinite(Date.parse(data.savedAt))) return false;
+      const next = checkedEvents(data.events);
+      events = next; cloud.offlineView = true;
+      snapshotDate = data.savedAt; snapshotAccount = data.email || '';
+      showMorning(data.settings?.morning); render(); offlineInfo();
+      return true;
+    } catch { return false; }
+  }
+  function forgetSnapshot(uid) {
+    try {
+      if (uid) localStorage.removeItem(snapshotKey(uid));
+      localStorage.removeItem(ACTIVE_SNAPSHOT);
+    } catch {}
+    snapshotDate = ''; snapshotAccount = ''; cloud.offlineView = false; offlineInfo();
+  }
+  function offlineInfo() {
+    const saved = snapshotDate ? new Date(snapshotDate).toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'}) : '';
+    offlineNote.textContent = snapshotFailed
+      ? 'クラウドへの保存は成功しましたが、本体へ保存できませんでした。端末の空き容量を確認してください。'
+      : saved ? '本体にも保存済み：' + saved + '（日本時間）。通信がない間は、この時点の予定を閲覧できます。'
+      : '通信中にクラウドの予定を読み込むと、本体にも保存します。オフライン中は閲覧のみです。';
+  }
+  function readOnlyOffline() { return cloud.offlineView || navigator.onLine === false; }
+  const onlineOpenForm = openForm;
+  openForm = function(...args) {
+    if (readOnlyOffline()) { alert('保存済みの予定を閲覧中です。追加・変更は通信が戻ってから行ってください。'); return; }
+    return onlineOpenForm(...args);
+  };
+  window.addEventListener('offline', () => {
+    if (cloud.user) restoreSnapshot(cloud.user.id);
+    controls(); status('オフラインです。最後に本体へ保存した予定を表示しています。追加・変更には通信が必要です。');
+  });
+  window.addEventListener('online', () => {
+    controls();
+    if (cloud.offlineView) status('通信が戻りました。「最新の予定を読み込む」を押すと、クラウドの最新状態に戻ります。');
+  });
+  // 通知の許可に関係なく、アプリ自体をオフラインで起動できるようにする。
+  if (window.isSecureContext && 'serviceWorker' in navigator && location.protocol !== 'file:') {
+    const scope = new URL('./', location.href);
+    navigator.serviceWorker.register(new URL('sw.js', scope).href, {scope:scope.href, updateViaCache:'none'})
+      .catch(() => { offlineNote.textContent = 'オフライン起動の準備ができませんでした。通信中に予定表を開き直してください。'; });
+  }
+
   function status(message) { $('cloud-status').textContent = message; }
   function controls() {
-    $('cloud-login-form').hidden = Boolean(cloud.user);
-    $('cloud-controls').hidden = !cloud.user;
-    $('cloud-account').textContent = cloud.user?.email || '';
-    $('cloud-first').hidden = !cloud.user || cloud.ready || cloud.revision !== null;
+    $('cloud-login-form').hidden = Boolean(cloud.user) || cloud.offlineView;
+    $('cloud-controls').hidden = !cloud.user && !cloud.offlineView;
+    $('cloud-account').textContent = cloud.user?.email || (cloud.offlineView ? snapshotAccount : '');
+    $('cloud-first').hidden = !cloud.user || cloud.ready || cloud.revision !== null || cloud.offlineView;
     ['cloud-login', 'cloud-signup', 'cloud-refresh', 'cloud-logout', 'cloud-import', 'cloud-empty'].forEach(id => {
-      $(id).disabled = cloud.busy || cloud.booting || !cloud.client;
+      $(id).disabled = cloud.busy || cloud.booting || !cloud.client || navigator.onLine === false;
     });
-    badge.textContent = cloud.user ? (cloud.ready ? 'クラウド保存' : 'クラウド確認中') : 'この端末に保存';
+    badge.textContent = readOnlyOffline() ? 'オフライン閲覧・本体の予定' : cloud.user ? (cloud.ready ? (snapshotFailed ? 'クラウド保存・本体保存失敗' : 'クラウド＋本体に保存') : 'クラウド確認中') : 'この端末に保存';
+    if(cloud.offlineView && navigator.onLine !== false && !cloud.busy) $('cloud-refresh').disabled = false;
     window.dispatchEvent(new Event('schedule-cloud-state'));
   }
   function morningValue() {
@@ -2077,11 +2152,12 @@ function decorateCalendarDate(element,date){
   function adopt(row) {
     const next = checkedEvents(row.events);
     if (!Number.isSafeInteger(row.revision) || row.revision < 0) throw new Error('保存履歴を確認できません。');
-    events = next;
+    events = next; cloud.offlineView = false;
     cloud.revision = row.revision;
     cloud.settings = row.settings && typeof row.settings === 'object' && !Array.isArray(row.settings) ? row.settings : {};
     cloud.ready = true;
     showMorning(cloud.settings.morning);
+    cacheConfirmedRow(row);
     render(); controls(); status('クラウドの予定を読み込みました。変更するとクラウドへ保存します。');
   }
   async function loadCloud() {
@@ -2093,8 +2169,8 @@ function decorateCalendarDate(element,date){
       if (epoch !== cloud.epoch) return;
       if (error) throw error;
       if (data) adopt(data);
-      else { cloud.revision = null; status('最初の保存方法を選んでください。'); }
-    } catch (error) { if (epoch === cloud.epoch) status(errorMessage(error)); }
+      else { forgetSnapshot(uid); cloud.revision = null; events=[]; showMorning(null); render(); status('最初の保存方法を選んでください。'); }
+    } catch (error) { if (epoch === cloud.epoch) { const restored = restoreSnapshot(uid); status(restored ? 'クラウドに接続できないため、本体に保存済みの予定を表示しています。通信が戻ったら「最新の予定を読み込む」を押してください。' : errorMessage(error)); } }
     finally { if (epoch === cloud.epoch) { cloud.busy = false; controls(); } }
   }
   async function startCloud(importLocal) {
@@ -2116,6 +2192,7 @@ function decorateCalendarDate(element,date){
     } finally { if (epoch === cloud.epoch) {cloud.busy = false; controls();} }
   }
   async function commit(nextEvents, nextSettings) {
+    if (readOnlyOffline()) { alert('オフライン中は閲覧のみです。通信が戻ったら、最新の予定を読み込んでください。'); return false; }
     if (!cloud.ready || cloud.busy) { alert('クラウドの確認・保存が終わってから、もう一度操作してください。設定画面で接続状態を確認できます。'); return false; }
     const epoch = cloud.epoch, uid = cloud.user.id, revision = cloud.revision;
     cloud.busy = true; controls(); status('クラウドへ保存中…');
@@ -2129,13 +2206,14 @@ function decorateCalendarDate(element,date){
         cloud.ready = false;
         throw new Error('別の端末で予定が更新されています。変更内容を控え、編集をキャンセルして、設定の「最新の予定を読み込む」を押してください。今回の変更は保存していません。');
       }
-      events = checkedEvents(data.events); cloud.revision = data.revision; cloud.settings = data.settings;
+      events = checkedEvents(data.events); cloud.revision = data.revision; cloud.settings = data.settings; cloud.offlineView = false; cacheConfirmedRow(data);
       window.scheduleCloudMorning = JSON.stringify(cloud.settings.morning || null);
       status('クラウドへ保存しました。'); return true;
     } catch (error) { if(epoch === cloud.epoch) {status(errorMessage(error)); alert(errorMessage(error));} return false; }
     finally { if(epoch === cloud.epoch) {cloud.busy = false; controls();} }
   }
   saveEvents = async function(nextEvents) {
+    if (readOnlyOffline()) { alert('オフライン中は予定を変更できません。'); return false; }
     if (cloud.booting) {alert('ログイン状態を確認中です。少し待ってもう一度保存してください。'); return false;}
     if (!cloud.user) {const ok = localSave(nextEvents); if(ok) localEvents = copyEvents(); return ok;}
     return commit(nextEvents, cloud.settings);
@@ -2150,11 +2228,12 @@ function decorateCalendarDate(element,date){
     render();
   };
   $('save-morning').addEventListener('click', async event => {
+    if (readOnlyOffline()) { event.preventDefault(); event.stopImmediatePropagation(); alert('通知設定の変更には通信が必要です。'); return; }
     if(cloud.booting || cloud.user) {
       event.preventDefault(); event.stopImmediatePropagation();
       if(cloud.booting) {status('ログイン状態を確認中です。');return;}
       if($('morning-enabled').value==='on' && !$('morning-time').value) {alert('通知時刻を入力してください。');return;}
-      if(await commit(events, {...cloud.settings,morning:morningValue()})) $('morning-status').textContent='クラウドへ保存しました。通知配信は準備中です。';
+      if(await commit(events, {...cloud.settings,morning:morningValue()})) $('morning-status').textContent='クラウドと本体へ保存しました。';
     } else {
       // 既存のローカル保存処理の完了後に、引き継ぎ用の値を更新する。
       setTimeout(()=>{try { localMorning=JSON.parse(localStorage.getItem(morningStorageKey))||localMorning; }catch{}},0);
@@ -2162,11 +2241,17 @@ function decorateCalendarDate(element,date){
   }, true);
   async function sessionChanged(session) {
     const user = session?.user || null;
-    if (user?.id === cloud.user?.id) return;
+    if (user?.id === cloud.user?.id && !cloud.offlineView) return;
+    const previousUid = cloud.user?.id;
     if(cloud.user && cloud.user.id!==user?.id) await stopDevicePush(false);
     cloud.epoch++; cloud.busy=false;cloud.ready=false;cloud.revision=null;
-    if (!cloud.user) { localEvents=copyEvents(); localMorning=morningValue(); }
+    if (!cloud.user && !cloud.offlineView) { localEvents=copyEvents(); localMorning=morningValue(); }
+    if (previousUid && previousUid !== user?.id) forgetSnapshot(previousUid);
+    if (!user) forgetSnapshot(previousUid);
     cloud.user=user;
+    cloud.offlineView=false;
+    events=localEvents.map(e=>({...e,exceptions:[...e.exceptions]}));
+    if(user) restoreSnapshot(user.id);
     ['event-dialog','scope-dialog'].forEach(id=>{if($(id).open)$(id).close();});
     pendingAction=null;editing=null;
     $('cloud-password').value='';
@@ -2195,7 +2280,7 @@ function decorateCalendarDate(element,date){
   }
   $('cloud-import').addEventListener('click',()=>startCloud(true));
   $('cloud-empty').addEventListener('click',()=>startCloud(false));
-  $('cloud-refresh').addEventListener('click',()=>loadCloud());
+  $('cloud-refresh').addEventListener('click',()=>{if(!cloud.user && cloud.offlineView) location.reload(); else void loadCloud();});
   $('cloud-logout').addEventListener('click',async()=>{
     if(cloud.busy||push.busy)return;
     await stopDevicePush();
@@ -2334,14 +2419,17 @@ function decorateCalendarDate(element,date){
   }
   drawPush();
 
+  offlineInfo();
+  if (restoreSnapshot()) status('本体に保存済みの予定を表示しています。接続を確認中…');
   controls();
   const sdk=document.createElement('script');
   sdk.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
   let timeout=setTimeout(failed,15000);
-  function failed(){if(cloud.client)return;cloud.booting=false;status('接続用ファイルを読み込めません。この端末への保存は使えます。通信を確認して再読み込みしてください。');controls();}
+  function failed(){if(cloud.client)return;clearTimeout(timeout);cloud.booting=false;if(restoreSnapshot()) status('接続できないため、本体に保存済みの予定を表示しています。通信が戻ったら「最新の予定を読み込む」を押してください。');else status('接続用ファイルを読み込めません。通信を確認して再読み込みしてください。');controls();}
   sdk.onerror=failed;
   sdk.onload=async()=>{
     clearTimeout(timeout);
+    if(navigator.onLine === false) { cloud.booting=false; status('オフラインです。本体に保存済みの予定を閲覧できます。'); controls(); return; }
     try{
       cloud.client=window.supabase.createClient(PROJECT_URL,PUBLIC_KEY,{global:{fetch:async(input,init={})=>{
         const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
