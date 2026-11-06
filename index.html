@@ -332,6 +332,64 @@ dialog .note{display:block}
 #day-title.is-saturday{color:#245dcc}#day-title.is-sunday,#day-title.is-holiday{color:#b32940}
 #month-title .holiday-unavailable{display:block;font-size:9px;line-height:11px;color:#69758a;font-weight:normal}
 
+
+/* 月間：通常予定は小さな色文字、終日予定のみ背景色 */
+#month-table .day-label{background:transparent!important;border-radius:0;box-shadow:none;padding-left:2px}
+#month-table .day-label.today{background:transparent!important;font-weight:900;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:2px}
+#month-table .cell-event{background:transparent!important;color:var(--event-ink,#245dcc);border:0!important;box-shadow:none;flex:0 0 12px;height:12px;min-height:0;padding:0 1px;border-radius:2px;font-size:8px;line-height:12px;font-weight:600}
+#month-table .cell-event[data-all-day="true"]{background:var(--event-pale,#e3edff)!important;padding:0 2px}
+.bottom-nav{align-items:center}
+.bottom-nav .bottom-add{flex:0 0 44px;width:44px;height:44px;min-height:44px;padding:0;margin-left:4px;border-radius:50%;font-size:30px;line-height:44px;font-weight:400}
+#event-dialog{padding:0;width:min(520px,calc(100% - 16px));max-height:94vh;max-height:94dvh;overflow-y:auto;background:#f2f4f8;border-radius:16px}
+#event-form{margin:0}
+.event-editor-header{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:90px minmax(0,1fr) 70px;align-items:center;min-height:58px;padding:8px 12px;background:#245dcc;color:white;gap:5px}
+.event-editor-header h2{margin:0;font-size:18px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.event-editor-header button{padding:9px 0;font-size:15px;background:transparent;color:white;min-height:40px}
+.event-editor-header #cancel-button{text-align:left}
+.event-editor-header #save-button{text-align:right;font-weight:bold}
+.editor-title-row{margin:0;padding:12px 16px;background:white;border-bottom:1px solid #e0e5ed}
+.editor-title-row label,.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#event-dialog #event-title{border:0;background:transparent;border-radius:0;padding:8px 0;margin:0;min-height:38px;font-size:20px}
+.editor-line{display:grid;grid-template-columns:90px minmax(0,1fr);align-items:center;gap:10px;margin:0;padding:6px 16px;min-height:50px;background:white;border-bottom:1px solid #e0e5ed}
+.editor-line>label{font-size:15px}
+#event-dialog .editor-line>input,#event-dialog .editor-line>select{max-width:100%;min-width:0;width:100%;margin:0;padding:8px 2px;border:0;background:transparent;border-radius:0;font-size:16px;text-align:right;min-height:36px}
+.editor-line select{text-align-last:right}
+.editor-group-start{border-top:12px solid #f2f4f8;min-height:62px}
+#event-dialog #editor-all-day{appearance:none;-webkit-appearance:none;width:50px!important;min-height:30px;height:30px;padding:0;margin:4px 0 4px auto;justify-self:end;position:relative;background:#d7dde7;border-radius:18px;cursor:pointer}
+#event-dialog #editor-all-day::after{content:"";display:block;width:24px;height:24px;border-radius:50%;background:white;position:absolute;left:3px;top:3px;box-shadow:0 1px 3px #0002;transition:transform .12s}
+#event-dialog #editor-all-day:checked{background:#245dcc}
+#event-dialog #editor-all-day:checked::after{transform:translateX(20px)}
+#event-dialog .editor-color-select{display:none}
+.editor-palette{display:flex;justify-content:flex-end;gap:5px;min-width:0}
+#event-dialog .editor-swatch{flex:0 0 30px;width:30px;height:30px;padding:0;border-radius:50%;background:var(--swatch-color);color:white;font-weight:bold;font-size:20px;line-height:30px}
+#event-dialog .editor-swatch[aria-pressed="true"]{outline:2px solid var(--swatch-color);outline-offset:2px}
+.editor-expanded-fields{padding:8px 16px;background:#fafbfd;border-bottom:1px solid #e0e5ed}
+.editor-expanded-fields p{margin:8px 0}
+.editor-expanded-fields label,.editor-expanded-fields small{font-size:13px}
+.editor-expanded-fields small{display:block;margin-top:5px;line-height:1.5}
+.editor-expanded-fields input,.editor-expanded-fields select{padding:8px}
+.editor-memo{background:white;margin:0}
+.editor-memo summary{padding:14px 16px;font-size:15px;cursor:pointer;min-height:48px}
+.editor-memo-body{margin:0;padding:0 16px 12px}
+#event-dialog .editor-memo-body textarea{margin:0}
+#event-dialog .editor-date-note{margin:0;padding:8px 16px;font-size:12px;line-height:1.5}
+#event-dialog .editor-date-note:empty{display:none}
+.event-editor-footer{padding:12px 16px max(16px,env(safe-area-inset-bottom))}
+.event-editor-footer:has(button[hidden]){display:none}
+.event-editor-footer button{width:100%;min-height:44px;font-size:15px}
+@media(max-width:600px){
+ #event-dialog{width:100%;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;margin:0;border-radius:0}
+ .event-editor-header{padding-top:max(8px,env(safe-area-inset-top))}
+}
+@media(max-width:350px){
+ .editor-line{grid-template-columns:72px minmax(0,1fr);padding-left:12px;padding-right:12px;gap:6px}
+ .editor-palette{gap:5px}
+ #event-dialog .editor-swatch{flex-basis:28px;width:28px;height:28px;line-height:28px;font-size:18px}
+}
+
+
+#event-dialog{max-width:none}
+
 </style>
 </head>
 
@@ -1040,7 +1098,7 @@ function decorateCalendarDate(element,date){
     });
 
     $("add-button").addEventListener("click", () => {
-      openForm(dateText(new Date()));
+      openForm(window.selectedAddDate ? window.selectedAddDate() : dateText(new Date()));
     });
 
     $("cancel-button").addEventListener("click", () => {
@@ -1852,7 +1910,7 @@ function decorateCalendarDate(element,date){
       const rowCount=Math.round((parseDate(mondayOf(last))-parseDate(start))/86400000/7)+1;
       const table=$("month-table");table.replaceChildren();table.style.setProperty("--rows",rowCount);
       const available=$("month-panel").clientHeight||500;
-      monthCardLimit=Math.max(0,Math.min(4,Math.floor(((available-108)/rowCount-57)/19)));
+      monthCardLimit=Math.max(0,Math.min(8,Math.floor(((available-108)/rowCount-57)/14)));
       const head=table.createTHead().insertRow();
       ["月","火","水","木","金","土","日"].forEach((day,index)=>{const th=document.createElement("th");th.scope="col";th.textContent=day;if(index===5)th.classList.add("is-saturday");if(index===6)th.classList.add("is-sunday");head.append(th);});
       const body=table.createTBody();
@@ -2253,6 +2311,220 @@ function decorateCalendarDate(element,date){
     }catch(error){cloud.booting=false;status(errorMessage(error));controls();}
   };
   document.head.append(sdk);
+})();
+
+</script>
+<script id="ui-refresh-v1">
+
+// 月間の読みやすさ・共通追加ボタン・簡潔な予定入力
+(() => {
+  const colorMap = {
+    blue: { name: '青', ink: '#245dcc', pale: '#e3edff' },
+    green: { name: '緑', ink: '#237746', pale: '#e0f3e7' },
+    orange: { name: 'オレンジ', ink: '#995500', pale: '#fff0d9' },
+    pink: { name: 'ピンク', ink: '#b02b64', pale: '#fce4ef' },
+    purple: { name: '紫', ink: '#7442aa', pale: '#eee5fc' },
+    gray: { name: 'グレー', ink: '#596779', pale: '#e9edf2' }
+  };
+  const originalButton = eventButton;
+  eventButton = function(event, date, includeDate = false) {
+    const button = originalButton(event, date, includeDate);
+    const color = colorMap[event.color] || colorMap.blue;
+    button.style.setProperty('--event-ink', color.ink);
+    button.style.setProperty('--event-pale', color.pale);
+    button.dataset.allDay = String(Boolean(event.allDay));
+    return button;
+  };
+  const add = $('add-button'), nav = document.querySelector('.bottom-nav');
+  add.textContent = '＋';
+  add.classList.add('bottom-add');
+  add.setAttribute('aria-label', '予定を追加');
+  add.title = '予定を追加';
+  nav.append(add);
+  $('add-day-event').hidden = true;
+  window.selectedAddDate = function() {
+    const today = dateText(new Date());
+    if ($('show-day').getAttribute('aria-pressed') === 'true') return shownDay;
+    if ($('show-week').getAttribute('aria-pressed') === 'true') {
+      return today >= shownMonday && today <= addDays(shownMonday, 6) ? today : shownMonday;
+    }
+    const month = dateText(monthCursor).slice(0, 7);
+    if (shownDay.slice(0, 7) === month) return shownDay;
+    if (today.slice(0, 7) === month) return today;
+    return dateText(monthCursor);
+  };
+
+  // 横方向の意図が明確な指の動きだけを受け付ける。
+  function enableCalendarSwipe(panelId, previousId, nextId) {
+    const surface = $(panelId).querySelector('.scroll');
+    surface.style.touchAction = 'pan-y pinch-zoom';
+    let start = null, suppressUntil = 0;
+    surface.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      if (!event.isPrimary || start) { start = null; return; }
+      if (document.querySelector('dialog[open]')) return;
+      if (event.target.closest('input,select,textarea')) return;
+      start = { id: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now() };
+    }, { passive: true });
+    window.addEventListener('pointerup', event => {
+      if (!start || start.id !== event.pointerId) return;
+      const gesture = start;
+      start = null;
+      const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+      if (performance.now() - gesture.time > 1000 || Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+      if ($(panelId).hidden || document.querySelector('dialog[open]')) return;
+      suppressUntil = performance.now() + 500;
+      $(dx < 0 ? nextId : previousId).click();
+    }, { passive: true });
+    window.addEventListener('pointercancel', () => { start = null; }, { passive: true });
+    surface.addEventListener('click', event => {
+      if (performance.now() < suppressUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
+  }
+  enableCalendarSwipe('month-panel', 'prev-month', 'next-month');
+  enableCalendarSwipe('week-panel', 'prev-week', 'next-week');
+
+  // 既存の入力要素と保存処理を使い、画面の並びだけを整理する。
+  const header = document.createElement('header');
+  header.className = 'event-editor-header';
+  $('cancel-button').textContent = 'キャンセル';
+  header.append($('cancel-button'), $('form-title'), $('save-button'));
+  const content = document.createElement('div');
+  content.className = 'event-editor-content';
+  const row = id => $(id).closest('p');
+  const titleRow = row('event-title');
+  titleRow.classList.add('editor-title-row');
+  $('event-title').placeholder = 'タイトル';
+  const categoryRow = row('event-category');
+  categoryRow.classList.add('editor-line');
+  const colorRow = row('event-color');
+  colorRow.classList.add('editor-line', 'editor-color-row');
+  const palette = document.createElement('div');
+  palette.className = 'editor-palette';
+  palette.setAttribute('role', 'group');
+  palette.setAttribute('aria-label', '予定の色');
+  $('event-color').classList.add('editor-color-select');
+  Object.entries(colorMap).forEach(([value, color]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'editor-swatch';
+    button.style.setProperty('--swatch-color', color.ink);
+    button.dataset.value = value;
+    button.setAttribute('aria-label', color.name);
+    button.title = color.name;
+    button.addEventListener('click', () => {
+      $('event-color').value = value;
+      $('event-color').dispatchEvent(new Event('change', { bubbles: true }));
+      syncPalette();
+    });
+    palette.append(button);
+  });
+  colorRow.append(palette);
+  function syncPalette() {
+    palette.querySelectorAll('button').forEach(button => {
+      const selected = button.dataset.value === $('event-color').value;
+      button.setAttribute('aria-pressed', String(selected));
+      button.textContent = selected ? '✓' : '';
+    });
+  }
+  $('event-category').addEventListener('change', syncPalette);
+  $('event-color').addEventListener('change', syncPalette);
+
+  const allDayRow = document.createElement('p');
+  allDayRow.className = 'editor-line editor-group-start';
+  const allDayLabel = document.createElement('label');
+  allDayLabel.htmlFor = 'editor-all-day';
+  allDayLabel.textContent = '終日';
+  const allDaySwitch = document.createElement('input');
+  allDaySwitch.id = 'editor-all-day';
+  allDaySwitch.type = 'checkbox';
+  allDaySwitch.setAttribute('role', 'switch');
+  allDaySwitch.setAttribute('aria-label', '終日の予定');
+  allDayRow.append(allDayLabel, allDaySwitch);
+  let lastTimeMode = 'period';
+  allDaySwitch.addEventListener('change', () => {
+    if (allDaySwitch.checked) {
+      if (timeMode.value !== 'allday') lastTimeMode = timeMode.value;
+      timeMode.value = 'allday';
+    } else timeMode.value = lastTimeMode;
+    updateFields();
+    updateReminderFields();
+  });
+  const dateRow = row('event-date');
+  dateRow.classList.add('editor-line');
+  dateRow.querySelector('label').textContent = '日付';
+  const modeRow = row('time-mode');
+  modeRow.classList.add('editor-line');
+  modeRow.querySelector('label').textContent = '時間の指定';
+  $('period-fields').classList.add('editor-line');
+  row('start-time').classList.add('editor-line');
+  row('end-time').classList.add('editor-line');
+  row('start-time').querySelector('label').textContent = '開始';
+  row('end-time').querySelector('label').textContent = '終了';
+  const reminderRow = row('reminder-mode');
+  reminderRow.classList.add('editor-line', 'editor-group-start');
+  reminderRow.querySelector('label').textContent = '通知';
+  $('repeat-choice').classList.add('editor-line');
+  $('repeat-choice').querySelector('label').textContent = '繰り返し';
+  const onceOption = repeatMode.querySelector('option[value="once"]');
+  onceOption.textContent = 'なし';
+  const memoDetails = document.createElement('details');
+  memoDetails.className = 'editor-memo';
+  const memoSummary = document.createElement('summary');
+  memoSummary.textContent = 'メモ';
+  const memoRow = row('event-memo');
+  memoRow.classList.add('editor-memo-body');
+  memoRow.querySelector('label').classList.add('visually-hidden');
+  $('event-memo').rows = 3;
+  memoDetails.append(memoSummary, memoRow);
+  $('reminder-fields').classList.add('editor-expanded-fields');
+  $('repeat-fields').classList.add('editor-expanded-fields');
+  $('date-note').classList.add('editor-date-note');
+  content.append(titleRow, categoryRow, colorRow, allDayRow, dateRow, modeRow,
+    $('period-fields'), $('time-fields'), reminderRow, $('reminder-fields'),
+    $('repeat-choice'), $('repeat-fields'), memoDetails, $('date-note'), $('scope-fields'));
+  const footer = document.createElement('div');
+  footer.className = 'event-editor-footer';
+  footer.append($('delete-button'));
+  form.replaceChildren(header, content, footer);
+  const originalFields = updateFields;
+  updateFields = function() {
+    originalFields();
+    allDaySwitch.checked = timeMode.value === 'allday';
+    modeRow.hidden = allDaySwitch.checked;
+    if (!allDaySwitch.checked) lastTimeMode = timeMode.value;
+  };
+  const originalOpen = openForm;
+  openForm = function(date, event = null, periodIndex = 0) {
+    originalOpen(date, event, periodIndex);
+    $('save-button').textContent = '保存';
+    $('delete-button').textContent = 'この予定を削除';
+    memoDetails.open = Boolean(event?.memo);
+    syncPalette();
+    updateFields();
+    dialog.scrollTop = 0;
+  };
+  // 元のchangeリスナーは元の関数を参照するため、新しい同期処理も登録する。
+  timeMode.addEventListener('change', () => {
+    if (timeMode.value === 'time' && !startInput.value && !endInput.value) {
+      const selected = periods[Number(periodSelect.value)];
+      if (selected) { startInput.value = selected.start; endInput.value = selected.end; }
+    }
+    updateFields();
+  });
+  form.addEventListener('invalid', event => {
+    if (memoDetails.contains(event.target)) memoDetails.open = true;
+  }, true);
+  // 通知配信が稼働した後の案内に更新する。
+  document.querySelectorAll('#settings-dialog .note').forEach(note => {
+    if (note.textContent.trim() === '予定の自動通知は準備中です。通知設定は保存できます。')
+      note.textContent = '予定と通知設定はクラウドへ保存します。端末ごとに通知を許可してください。';
+    if (note.textContent.includes('現在はテスト通知を送れます。'))
+      note.textContent = '「通知する」にした予定を、指定した時間前にお知らせします。朝のまとめは下の設定でオンにできます。';
+    if (note.textContent.includes('現在は設定の保存のみです。'))
+      note.textContent = '自動通知の対象は、クラウドへ保存した予定と設定です。';
+  });
+  render();
 })();
 
 </script>
