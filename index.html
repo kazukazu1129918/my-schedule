@@ -390,6 +390,54 @@ dialog .note{display:block}
 
 #event-dialog{max-width:none}
 
+
+/* 週間：平日5列・時間に沿った連続表示 */
+#week-table{--week-label-width:42px}
+#week-table tr{grid-template-columns:var(--week-label-width) repeat(5,minmax(0,1fr))}
+#week-table thead{flex:0 0 46px}
+#week-table thead tr{height:46px}
+#week-table thead th{font-size:14px;line-height:17px}
+#week-table thead th small{font-size:11px;line-height:12px}
+#week-table tbody{position:relative;grid-template-rows:var(--week-row-weights);overflow:hidden;background:#eef4fd}
+#week-table tbody tr{min-height:0}
+#week-table tbody th{font-size:13px;background:#eef4fd}
+#week-table tbody th small{font-size:8px;line-height:1.2;margin-top:4px}
+#week-table .week-day-cell{border:0;background:#eef4fd;overflow:hidden}
+#week-table .week-slot{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);min-height:0;padding:0;margin:0;border:0;border-radius:9px;background:#fff;color:#245dcc}
+#week-table .week-slot:focus-visible{outline:2px solid #e29600;outline-offset:-2px}
+.week-event-layer{position:absolute;inset:0 0 0 var(--week-label-width);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));pointer-events:none}
+.week-day-overlay{position:relative;min-width:0;height:100%;pointer-events:none}
+#week-table .week-event{position:absolute;box-sizing:border-box;margin:2px 0;padding:4px 3px;min-height:0;border:0!important;border-radius:9px;background:var(--event-pale,#e3edff);color:#243247;overflow:hidden;text-align:center;white-space:normal;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;pointer-events:auto;touch-action:pan-y pinch-zoom}
+.week-event-title{display:block;max-width:100%;overflow:hidden;overflow-wrap:anywhere;font-size:14px;line-height:1.25;font-weight:650}
+.week-event-title.long-title{font-size:12px;line-height:1.2}
+.week-event-time{display:block;max-width:100%;font-size:9px;line-height:1.15;overflow-wrap:anywhere;font-weight:normal;flex:0 0 auto}
+#week-table .week-event.is-overlapping{padding-left:1px;padding-right:1px;border-radius:6px}
+#week-table .week-event.is-overlapping .week-event-title{font-size:11px;line-height:1.15}
+#week-table .week-event.is-overlapping .week-event-time{font-size:8px}
+#week-table .week-event.is-short{padding:1px}
+#week-table .week-event.is-short .week-event-title{font-size:10px;line-height:1.1}
+#week-table .week-event.is-short .week-event-time{display:none}
+#week-table .week-all-day-event{font-size:11px;line-height:1.15;padding:2px;overflow:hidden}
+#week-table .week-overflow{position:absolute;min-height:0;margin:2px 0;padding:2px 0;background:#dfe8f7;color:#245dcc;font-size:10px;border-radius:6px;overflow:hidden;pointer-events:auto}
+#week-table .week-all-day-overflow{left:3px;width:calc(100% - 6px)}
+@media(max-width:350px){
+ .week-event-title{font-size:12px}
+ .week-event-title.long-title{font-size:10.5px}
+ #week-table{--week-label-width:36px}
+ #week-table tbody th small{font-size:7px}
+ #week-table .week-slot{border-radius:7px}
+}
+@media(min-width:700px){
+ #week-table{--week-label-width:58px}
+ .week-event-title{font-size:17px}
+ .week-event-title.long-title{font-size:15px}
+ .week-event-time{font-size:11px}
+ #week-table .week-event.is-overlapping .week-event-title{font-size:14px}
+}
+
+#week-table .week-event-time[hidden]{display:none!important}
+#week-table .week-event-title{min-height:0}
+
 </style>
 </head>
 
@@ -1388,7 +1436,7 @@ function decorateCalendarDate(element,date){
 
       const end = allDay
         ? "24:00"
-        : usePeriod ? period.end : endInput.value;
+        : usePeriod ? (periods[Number($("event-end-period")?.value ?? periodSelect.value)] || period).end : endInput.value;
 
       const recurring = useWeekly();
       const interval = recurring
@@ -2524,6 +2572,294 @@ function decorateCalendarDate(element,date){
     if (note.textContent.includes('現在は設定の保存のみです。'))
       note.textContent = '自動通知の対象は、クラウドへ保存した予定と設定です。';
   });
+  render();
+})();
+
+</script>
+<script id="weekly-refresh-v1">
+
+(() => {
+  const endRow = document.createElement('p');
+  endRow.id = 'end-period-fields';
+  endRow.className = 'editor-line';
+  const label = document.createElement('label');
+  label.htmlFor = 'event-end-period';
+  label.textContent = '終了コマ';
+  const endSelect = document.createElement('select');
+  endSelect.id = 'event-end-period';
+  periods.forEach((period, index) => {
+    const option = document.createElement('option');
+    option.value = index;
+    option.textContent = period.name + '（〜' + period.end + '）';
+    endSelect.append(option);
+  });
+  endRow.append(label, endSelect);
+  $('period-fields').after(endRow);
+  $('period-fields').querySelector('label').textContent = '開始コマ';
+
+  function syncEndPeriod() {
+    const startIndex = Number(periodSelect.value);
+    if (Number(endSelect.value) < startIndex || !endSelect.value) endSelect.value = String(startIndex);
+    for (const option of endSelect.options) option.disabled = Number(option.value) < startIndex;
+    const enabled = timeMode.value === 'period';
+    endRow.hidden = !enabled;
+    endSelect.disabled = !enabled;
+    endSelect.required = enabled;
+  }
+  const previousFields = updateFields;
+  updateFields = function() { previousFields(); syncEndPeriod(); };
+  const previousOpen = openForm;
+  let previousMode = 'period';
+  openForm = function(date, event = null, periodIndex = 0) {
+    previousOpen(date, event, periodIndex);
+    let first = event ? periods.findIndex(p => p.start === event.start) : Number(periodIndex);
+    let last = event ? periods.findIndex(p => p.end === event.end) : first;
+    if (event && !event.allDay && first >= 0 && last >= first) {
+      timeMode.value = 'period';
+      periodSelect.value = first;
+      endSelect.value = last;
+    } else endSelect.value = periodSelect.value;
+    updateFields();
+    updateReminderFields();
+    previousMode = timeMode.value;
+  };
+  periodSelect.addEventListener('change', syncEndPeriod);
+  timeMode.addEventListener('change', () => {
+    if (timeMode.value === 'time' && previousMode === 'period') {
+      const first = periods[Number(periodSelect.value)];
+      const last = periods[Number(endSelect.value)];
+      if (first && last) { startInput.value = first.start; endInput.value = last.end; }
+    }
+    syncEndPeriod();
+    previousMode = timeMode.value;
+  });
+  syncEndPeriod();
+
+  const weights = [1, 1, 0.45, 1, 1, 1, 2 / 3, 2 / 3];
+  const allDayWeight = 0.55;
+  const totalWeight = allDayWeight + weights.reduce((sum, value) => sum + value, 0);
+  function minutes(text) {
+    if (typeof text !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$|^24:00$/.test(text)) return NaN;
+    const [hour, minute] = text.split(':').map(Number);
+    return hour * 60 + minute;
+  }
+  const dayStart = minutes(periods[0].start);
+  const dayEnd = minutes(periods[periods.length - 1].end);
+  function timePosition(value) {
+    if (value <= dayStart) return allDayWeight / totalWeight;
+    if (value >= dayEnd) return 1;
+    let offset = allDayWeight;
+    for (let index = 0; index < periods.length; index++) {
+      const from = minutes(periods[index].start);
+      const to = index + 1 < periods.length ? minutes(periods[index + 1].start) : dayEnd;
+      if (value < to) return (offset + (value - from) / (to - from) * weights[index]) / totalWeight;
+      offset += weights[index];
+    }
+    return 1;
+  }
+  function visualEvent(event) {
+    const from = minutes(event.start), to = minutes(event.end);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
+    let start = Math.max(from, dayStart), end = Math.min(to, dayEnd);
+    if (to <= dayStart) {
+      start = dayStart;
+      end = dayStart + Math.min(60, Math.max(20, to - from));
+    } else if (from >= dayEnd) {
+      start = dayEnd - Math.min(60, Math.max(20, to - from));
+      end = dayEnd;
+    }
+    let top = timePosition(start), bottom = timePosition(end);
+    const minimumHeight = 0.035;
+    if (bottom - top < minimumHeight) {
+      const center = (top + bottom) / 2;
+      top = Math.max(allDayWeight / totalWeight, Math.min(1 - minimumHeight, center - minimumHeight / 2));
+      bottom = Math.min(1, top + minimumHeight);
+    }
+    return { event, top, bottom, early: from < dayStart, late: to > dayEnd, lane: 0 };
+  }
+  function eventGroups(items) {
+    const sorted = items.slice().sort((a, b) => a.top - b.top || a.bottom - b.bottom);
+    const groups = [];
+    let group = null;
+    for (const item of sorted) {
+      if (!group || item.top >= group.bottom - 0.00001) {
+        group = { items: [], laneEnds: [], bottom: item.bottom };
+        groups.push(group);
+      }
+      let lane = group.laneEnds.findIndex(end => end <= item.top + 0.00001);
+      if (lane < 0) lane = group.laneEnds.length;
+      group.laneEnds[lane] = item.bottom;
+      group.items.push({ ...item, lane });
+      group.bottom = Math.max(group.bottom, item.bottom);
+    }
+    return groups;
+  }
+  function placeCard(column, date, item, laneCount) {
+    const button = eventButton(item.event, date);
+    button.classList.add('cell-event', 'week-event');
+    button.dataset.eventId = item.event.id;
+    button.dataset.early = String(item.early);
+    button.dataset.late = String(item.late);
+    button.style.top = (item.top * 100) + '%';
+    button.style.height = 'calc(' + ((item.bottom - item.top) * 100) + '% - 4px)';
+    button.style.left = 'calc(' + (item.lane / laneCount * 100) + '% + 3px)';
+    button.style.width = 'calc(' + (100 / laneCount) + '% - 6px)';
+    if (laneCount > 1) button.classList.add('is-overlapping');
+    if (item.bottom - item.top < 0.08) button.classList.add('is-short');
+    const title = document.createElement('span');
+    title.className = 'week-event-title';
+    title.textContent = (item.early ? '↑ ' : '') + (item.late ? '↓ ' : '') + item.event.title;
+    if (item.event.title.length > 20) title.classList.add('long-title');
+    const time = document.createElement('small');
+    time.className = 'week-event-time';
+    time.textContent = item.event.start + '〜' + item.event.end;
+    const startsOnPeriod = periods.some(p => p.start === item.event.start);
+    const endsOnPeriod = periods.some(p => p.end === item.event.end);
+    if (startsOnPeriod && endsOnPeriod && !item.early && !item.late) time.hidden = true;
+    button.replaceChildren(title, time);
+    button.title = shortDate(date) + ' ' + item.event.title + ' ' + item.event.start + '〜' + item.event.end +
+      (item.early ? '（早朝の予定を含む）' : '') + (item.late ? '（21時以降の予定を含む）' : '');
+    button.setAttribute('aria-label', button.title + ' 編集');
+    column.append(button);
+  }
+  function placeAllDay(column, date, items) {
+    if (!items.length) return;
+    const count = Math.min(2, items.length);
+    const visible = items.length <= 2 ? items : items.slice(0, 1);
+    visible.forEach((event, index) => {
+      const button = eventButton(event, date);
+      button.classList.add('cell-event', 'week-event', 'week-all-day-event');
+      button.dataset.eventId = event.id;
+      button.textContent = event.title;
+      button.style.top = (index / count * allDayWeight / totalWeight * 100) + '%';
+      button.style.height = 'calc(' + (allDayWeight / totalWeight / count * 100) + '% - 4px)';
+      button.style.left = '3px';
+      button.style.width = 'calc(100% - 6px)';
+      column.append(button);
+    });
+    if (items.length > 2) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'week-overflow week-all-day-overflow';
+      more.textContent = '＋' + (items.length - 1) + '件';
+      more.setAttribute('aria-label', shortDate(date) + 'の終日予定をすべて見る');
+      more.style.top = (allDayWeight / totalWeight / 2 * 100) + '%';
+      more.style.height = 'calc(' + (allDayWeight / totalWeight / 2 * 100) + '% - 4px)';
+      more.addEventListener('click', () => goToDay(date));
+      column.append(more);
+    }
+  }
+
+  drawCompactWeek = function() {
+    const days = Array.from({ length: 5 }, (_, index) => addDays(shownMonday, index));
+    $('week-title').textContent = shortDate(days[0]) + '〜' + shortDate(days[4]);
+    $('week-title').title = '週間表示は月曜〜金曜。土日の予定は日別・月間で確認できます。';
+    const table = $('week-table');
+    table.replaceChildren();
+    table.classList.add('time-layout');
+    table.style.setProperty('--week-row-weights', [allDayWeight, ...weights].map(w => 'minmax(0,' + w + 'fr)').join(' '));
+    const head = table.createTHead().insertRow();
+    const corner = document.createElement('th');
+    corner.textContent = 'コマ';
+    head.append(corner);
+    days.forEach(date => {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = weekdays[parseDate(date).getDay()];
+      const day = document.createElement('small');
+      day.textContent = parseDate(date).getMonth() + 1 + '/' + parseDate(date).getDate();
+      th.append(day);
+      if (date === dateText(new Date())) th.classList.add('today');
+      decorateCalendarDate(th, date);
+      if (holidayName(date)) {
+        const holiday = document.createElement('span');
+        holiday.className = 'week-holiday';
+        holiday.textContent = holidayName(date);
+        th.append(holiday);
+      }
+      th.tabIndex = 0;
+      th.setAttribute('role', 'button');
+      th.setAttribute('aria-label', shortDate(date) + (holidayName(date) ? ' ' + holidayName(date) : '') + 'の日別表示');
+      th.title = shortDate(date) + (holidayName(date) ? ' ' + holidayName(date) : '');
+      th.addEventListener('click', () => goToDay(date));
+      th.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); goToDay(date); }
+      });
+      head.append(th);
+    });
+    const body = table.createTBody();
+    const rows = [{ name: '終日', index: -1 }, ...periods.map((p, index) => ({ ...p, index }))];
+    rows.forEach(row => {
+      const tr = body.insertRow();
+      tr.dataset.periodIndex = row.index;
+      const th = document.createElement('th');
+      th.scope = 'row';
+      const name = document.createElement('span');
+      name.className = 'week-period-name';
+      name.textContent = row.name;
+      th.append(name);
+      if (row.start) {
+        const time = document.createElement('small');
+        time.textContent = row.start + '\n' + row.end;
+        th.append(time);
+      }
+      tr.append(th);
+      days.forEach(date => {
+        const cell = tr.insertCell();
+        cell.className = 'week-day-cell';
+        decorateCalendarDate(cell, date);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'week-slot';
+        button.setAttribute('aria-label', shortDate(date) + ' ' + row.name + 'に予定を追加');
+        button.addEventListener('click', () => {
+          openForm(date, null, row.index < 0 ? 0 : row.index);
+          if (row.index < 0) {
+            timeMode.value = 'allday';
+            updateFields();
+            updateReminderFields();
+          }
+        });
+        cell.append(button);
+      });
+    });
+    const layer = document.createElement('div');
+    layer.className = 'week-event-layer';
+    days.forEach(date => {
+      const column = document.createElement('div');
+      column.className = 'week-day-overlay';
+      column.dataset.date = date;
+      const items = eventsOn(date);
+      placeAllDay(column, date, items.filter(e => e.allDay));
+      const visual = items.filter(e => !e.allDay).map(visualEvent).filter(Boolean);
+      for (const group of eventGroups(visual)) {
+        const lanes = group.laneEnds.length;
+        const displayedLanes = Math.min(3, lanes);
+        const visible = lanes > 3 ? group.items.filter(item => item.lane < 2) : group.items;
+        visible.forEach(item => placeCard(column, date, item, displayedLanes));
+        if (lanes > 3) {
+          const hidden = group.items.filter(item => item.lane >= 2);
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'week-overflow';
+          more.textContent = '＋' + hidden.length + '件';
+          more.setAttribute('aria-label', shortDate(date) + 'の重なる予定をすべて見る');
+          more.style.top = (Math.min(...hidden.map(item => item.top)) * 100) + '%';
+          more.style.left = 'calc(66.6667% + 2px)';
+          more.style.width = 'calc(33.3333% - 4px)';
+          more.style.height = 'calc(' + ((group.bottom - Math.min(...hidden.map(item => item.top))) * 100) + '% - 4px)';
+          more.addEventListener('click', () => goToDay(date));
+          column.append(more);
+        }
+      }
+      layer.append(column);
+    });
+    body.append(layer);
+  };
+  const help = document.createElement('p');
+  help.className = 'note';
+  help.textContent = '週間は月〜金の表示です。空いたコマを押すと追加、予定を押すと編集できます。↑は9時前、↓は21時以降の予定を含む印です。土日の予定と通知も引き続き使えます。';
+  settingsDialog.append(help);
   render();
 })();
 
