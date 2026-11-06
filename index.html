@@ -407,8 +407,8 @@ dialog .note{display:block}
 #week-table .week-slot:focus-visible{outline:2px solid #e29600;outline-offset:-2px}
 .week-event-layer{position:absolute;inset:0 0 0 var(--week-label-width);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));pointer-events:none}
 .week-day-overlay{position:relative;min-width:0;height:100%;pointer-events:none}
-#week-table .week-event{position:absolute;box-sizing:border-box;margin:2px 0;padding:4px 3px;min-height:0;border:0!important;border-radius:9px;background:var(--event-pale,#e3edff);color:#243247;overflow:hidden;text-align:center;white-space:normal;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;pointer-events:auto;touch-action:pan-y pinch-zoom}
-.week-event-title{display:block;max-width:100%;overflow:hidden;overflow-wrap:anywhere;font-size:14px;line-height:1.25;font-weight:650}
+#week-table .week-event{position:absolute;box-sizing:border-box;margin:3px 0;padding:4px 2px;min-height:0;border:0!important;border-radius:9px;background:var(--event-pale,#e3edff);color:#243247;overflow:hidden;text-align:center;white-space:normal;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;pointer-events:auto;touch-action:pan-y pinch-zoom}
+.week-event-title{display:block;max-width:100%;overflow:hidden;overflow-wrap:anywhere;font-size:12px;line-height:1.25;font-weight:650}
 .week-event-title.long-title{font-size:12px;line-height:1.2}
 .week-event-time{display:block;max-width:100%;font-size:9px;line-height:1.15;overflow-wrap:anywhere;font-weight:normal;flex:0 0 auto}
 #week-table .week-event.is-overlapping{padding-left:1px;padding-right:1px;border-radius:6px}
@@ -421,16 +421,16 @@ dialog .note{display:block}
 #week-table .week-overflow{position:absolute;min-height:0;margin:2px 0;padding:2px 0;background:#dfe8f7;color:#245dcc;font-size:10px;border-radius:6px;overflow:hidden;pointer-events:auto}
 #week-table .week-all-day-overflow{left:3px;width:calc(100% - 6px)}
 @media(max-width:350px){
- .week-event-title{font-size:12px}
- .week-event-title.long-title{font-size:10.5px}
+ .week-event-title{font-size:11px}
+ .week-event-title.long-title{font-size:10px}
  #week-table{--week-label-width:36px}
  #week-table tbody th small{font-size:7px}
  #week-table .week-slot{border-radius:7px}
 }
 @media(min-width:700px){
  #week-table{--week-label-width:58px}
- .week-event-title{font-size:17px}
- .week-event-title.long-title{font-size:15px}
+ .week-event-title{font-size:15px}
+ .week-event-title.long-title{font-size:13px}
  .week-event-time{font-size:11px}
  #week-table .week-event.is-overlapping .week-event-title{font-size:14px}
 }
@@ -2651,8 +2651,9 @@ function decorateCalendarDate(element,date){
     let offset = allDayWeight;
     for (let index = 0; index < periods.length; index++) {
       const from = minutes(periods[index].start);
-      const to = index + 1 < periods.length ? minutes(periods[index + 1].start) : dayEnd;
-      if (value < to) return (offset + (value - from) / (to - from) * weights[index]) / totalWeight;
+      const end = minutes(periods[index].end);
+      const next = index + 1 < periods.length ? minutes(periods[index + 1].start) : dayEnd;
+      if (value < next) return (offset + Math.min(1, (value - from) / (end - from)) * weights[index]) / totalWeight;
       offset += weights[index];
     }
     return 1;
@@ -2701,7 +2702,7 @@ function decorateCalendarDate(element,date){
     button.dataset.early = String(item.early);
     button.dataset.late = String(item.late);
     button.style.top = (item.top * 100) + '%';
-    button.style.height = 'calc(' + ((item.bottom - item.top) * 100) + '% - 4px)';
+    button.style.height = 'calc(' + ((item.bottom - item.top) * 100) + '% - 6px)';
     button.style.left = 'calc(' + (item.lane / laneCount * 100) + '% + 3px)';
     button.style.width = 'calc(' + (100 / laneCount) + '% - 6px)';
     if (laneCount > 1) button.classList.add('is-overlapping');
@@ -2732,7 +2733,7 @@ function decorateCalendarDate(element,date){
       button.dataset.eventId = event.id;
       button.textContent = event.title;
       button.style.top = (index / count * allDayWeight / totalWeight * 100) + '%';
-      button.style.height = 'calc(' + (allDayWeight / totalWeight / count * 100) + '% - 4px)';
+      button.style.height = 'calc(' + (allDayWeight / totalWeight / count * 100) + '% - 6px)';
       button.style.left = '3px';
       button.style.width = 'calc(100% - 6px)';
       column.append(button);
@@ -2744,7 +2745,7 @@ function decorateCalendarDate(element,date){
       more.textContent = '＋' + (items.length - 1) + '件';
       more.setAttribute('aria-label', shortDate(date) + 'の終日予定をすべて見る');
       more.style.top = (allDayWeight / totalWeight / 2 * 100) + '%';
-      more.style.height = 'calc(' + (allDayWeight / totalWeight / 2 * 100) + '% - 4px)';
+      more.style.height = 'calc(' + (allDayWeight / totalWeight / 2 * 100) + '% - 6px)';
       more.addEventListener('click', () => goToDay(date));
       column.append(more);
     }
@@ -2847,7 +2848,7 @@ function decorateCalendarDate(element,date){
           more.style.top = (Math.min(...hidden.map(item => item.top)) * 100) + '%';
           more.style.left = 'calc(66.6667% + 2px)';
           more.style.width = 'calc(33.3333% - 4px)';
-          more.style.height = 'calc(' + ((group.bottom - Math.min(...hidden.map(item => item.top))) * 100) + '% - 4px)';
+          more.style.height = 'calc(' + ((group.bottom - Math.min(...hidden.map(item => item.top))) * 100) + '% - 6px)';
           more.addEventListener('click', () => goToDay(date));
           column.append(more);
         }
