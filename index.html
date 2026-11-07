@@ -3280,5 +3280,129 @@ function decorateCalendarDate(element,date){
 })();
 
 </script>
+<script id="event-history-module">
+(() => {
+  const row = titleInput.closest('p');
+  row.classList.add('history-title-row');
+  const button = document.createElement('button');
+  button.id = 'event-history-button';
+  button.type = 'button';
+  button.innerHTML = '<span aria-hidden="true">◷</span><small>履歴</small>';
+  button.setAttribute('aria-label','履歴から予定を入力');
+  row.append(button);
+  const picker = document.createElement('dialog');
+  picker.id = 'event-history-dialog';
+  picker.innerHTML = `<div class="history-header"><h2>予定の履歴</h2><button id="history-back" type="button" class="secondary">戻る</button></div>
+    <p class="history-help">登録済みの予定から選ぶと、入力中の日付で新しい予定を作れます。繰り返しは「なし」で入力します。</p>
+    <label class="visually-hidden" for="history-search">履歴を検索</label><input id="history-search" type="search" placeholder="予定名・分類・メモで検索" autocomplete="off">
+    <p id="history-count" role="status" aria-live="polite"></p><ul id="history-list"></ul>`;
+  document.body.append(picker);
+  const style = document.createElement('style');
+  style.textContent = `
+    .editor-title-row.history-title-row{display:grid;grid-template-columns:minmax(0,1fr) 48px;align-items:center;gap:6px}
+    .history-title-row #event-title{min-width:0}
+    #event-history-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;width:48px;min-height:48px;margin:0;padding:3px;background:transparent;color:#778394;font-size:24px;line-height:1}
+    #event-history-button small{font-size:10px;line-height:1.5}
+    #event-history-button[hidden]{display:none}
+    #event-history-dialog{width:min(460px,calc(100% - 20px));max-width:calc(100% - 20px);height:min(680px,85dvh);max-height:85dvh;padding:14px;overflow:hidden}
+    #event-history-dialog[open]{display:flex;flex-direction:column;gap:8px}
+    .history-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:0 0 auto}
+    .history-header h2{margin:0;font-size:18px}
+    .history-header button{padding:8px 12px;font-size:14px}
+    #event-history-dialog .history-help{font-size:12px;line-height:1.5;color:#60708a;margin:0;flex:0 0 auto}
+    #history-search{margin:0;padding:10px;flex:0 0 auto}
+    #history-count{font-size:11px;color:#60708a;margin:0;flex:0 0 auto}
+    #history-list{min-height:0;overflow:auto;list-style:none;padding:0;margin:0;flex:1}
+    #history-list li{border-bottom:1px solid #e3e8ef}
+    #history-list .history-item{display:grid;grid-template-columns:10px 64px minmax(0,1fr);align-items:center;gap:8px;width:100%;min-height:68px;padding:10px 3px;border-radius:0;background:white;color:#243247;text-align:left}
+    .history-dot{width:9px;height:9px;border-radius:50%;background:var(--history-color)}
+    .history-time{font-size:11px;line-height:1.5;white-space:pre-line}
+    .history-description{min-width:0}
+    .history-name{display:block;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+    .history-meta{display:block;font-size:10px;line-height:1.4;color:#69778b;margin-top:3px;overflow-wrap:anywhere}
+    #history-list .history-empty{padding:18px 4px;font-size:14px;line-height:1.6;color:#60708a}
+  `;
+  document.head.append(style);
+  const colors={blue:'#245dcc',green:'#27854c',orange:'#c97800',pink:'#c43f78',purple:'#8752be',gray:'#69788b'};
+  const normalize = value => String(value || '').normalize('NFKC').toLowerCase();
+  let candidates = [];
+  function candidateKey(event) {
+    return JSON.stringify([event.title,event.start,event.end,!!event.allDay,event.category||'other',event.color||'blue',event.memo||'',event.reminder?.minutesBefore??null,event.reminder?.allDayTime||'09:00']);
+  }
+  function collectHistory() {
+    const seen=new Set();
+    return events.slice().reverse().filter(event=>{
+      if(!event || !String(event.title||'').trim())return false;
+      const key=candidateKey(event);
+      if(seen.has(key))return false;
+      seen.add(key);return true;
+    });
+  }
+  function selectHistory(event) {
+    if(!dialog.open || editing)return;
+    if(navigator.onLine===false){alert('履歴からの追加は通信が戻ってから行ってください。');return;}
+    const destination=dateInput.value;
+    if(!destination || !dateInput.checkValidity()){alert('先に新しい予定の日付を選んでください。');return;}
+    const reminder=event.reminder && Number.isInteger(event.reminder.minutesBefore) &&
+      event.reminder.minutesBefore>=0 && event.reminder.minutesBefore<=10080
+      ? {...event.reminder} : null;
+    // 元のID・親子関係・例外・繰り返し終了日を持ち込まない。
+    const seed={id:makeId(),title:event.title,date:destination,start:event.start,end:event.end,allDay:!!event.allDay,
+      category:categorySettings[event.category]?event.category:'other',color:colors[event.color]?event.color:'blue',
+      memo:event.memo||'',reminder,repeat:'once',interval:1,until:'',exceptions:[]};
+    picker.close();
+    openForm(destination,seed);
+    editing=null;
+    pendingAction=null;
+    repeatMode.value='once';repeatUntil.value='';$('repeat-interval').value=1;
+    $('form-title').textContent='予定を追加';
+    $('delete-button').hidden=true;
+    button.hidden=false;
+    updateFields();updateReminderFields();
+    titleInput.focus();
+    titleInput.setSelectionRange(titleInput.value.length,titleInput.value.length);
+  }
+  function renderHistory() {
+    const query=normalize($('history-search').value.trim());
+    const matches=candidates.filter(event=>normalize([event.title,event.memo,categorySettings[event.category]?.name||'その他',event.start,event.end].join(' ')).includes(query));
+    $('history-count').textContent=matches.length>100?'該当 '+matches.length+'件（先頭100件を表示・検索で絞り込めます）':matches.length+'件';
+    const list=$('history-list');list.replaceChildren();
+    if(!matches.length){
+      const empty=document.createElement('li');empty.className='history-empty';
+      empty.textContent=query?'一致する予定はありません。':'まだ履歴に使える予定がありません。予定を保存すると、ここから選べるようになります。';
+      list.append(empty);return;
+    }
+    matches.slice(0,100).forEach(event=>{
+      const li=document.createElement('li'),choose=document.createElement('button');
+      choose.type='button';choose.className='history-item';
+      choose.style.setProperty('--history-color',colors[event.color]||colors.blue);
+      const dot=document.createElement('span');dot.className='history-dot';dot.setAttribute('aria-hidden','true');
+      const time=document.createElement('span');time.className='history-time';time.textContent=event.allDay?'終日':event.start+'\n〜'+event.end;
+      const description=document.createElement('span');description.className='history-description';
+      const name=document.createElement('span');name.className='history-name';name.textContent=event.title;
+      const meta=document.createElement('small');meta.className='history-meta';
+      meta.textContent=(categorySettings[event.category]?.name||'その他')+' · 元の日付：'+event.date+
+        (event.reminder?' · 通知あり':'')+(event.memo?' · メモあり':'');
+      description.append(name,meta);choose.append(dot,time,description);
+      choose.setAttribute('aria-label',event.title+' '+(event.allDay?'終日':event.start+'から'+event.end)+'を新しい予定に使う');
+      choose.addEventListener('click',()=>selectHistory(event));
+      li.append(choose);list.append(li);
+    });
+    list.scrollTop=0;
+  }
+  button.addEventListener('click',()=>{
+    if(editing || !dialog.open)return;
+    candidates=collectHistory();$('history-search').value='';renderHistory();
+    picker.showModal();$('history-back').focus({preventScroll:true});
+  });
+  $('history-search').addEventListener('input',renderHistory);
+  $('history-back').addEventListener('click',()=>picker.close());
+  picker.addEventListener('close',()=>{candidates=[];if(dialog.open&&!editing)button.focus();});
+  window.addEventListener('schedule-cloud-state',()=>{if(!dialog.open&&picker.open)picker.close();});
+  window.addEventListener('schedule-preferences-account',()=>{candidates=[];if(picker.open)picker.close();});
+  const previousOpen=openForm;
+  openForm=function(...args){const result=previousOpen(...args);button.hidden=!!editing;return result;};
+})();
+</script>
 </body>
 </html>
